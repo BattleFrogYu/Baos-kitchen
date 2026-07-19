@@ -245,6 +245,10 @@ function saveLocal(){
   try{
     localStorage.setItem(STORE_KEY, JSON.stringify({
       v:2, cart:state.cart, checked:state.checked, recipes:state.recipes,
+      // Persisted so "what has the server already seen" survives a reload.
+      // Without it every field looks locally-edited on boot, and this device
+      // would push its stale state over the other person's changes.
+      synced: lastSynced,
     }));
   }catch(e){ showToast('Could not save — storage full'); }
 }
@@ -307,6 +311,7 @@ function load(){
     if(d.cart)    state.cart    = d.cart;
     if(d.checked) state.checked = d.checked;
     if(Array.isArray(d.recipes) && d.recipes.length) state.recipes = d.recipes;
+    if(d.synced)  Object.assign(lastSynced, d.synced);
     // v1 stored photos in localStorage — move them to IndexedDB, then reclaim.
     if(d.photos && Object.keys(d.photos).length){
       state.photos = d.photos;
@@ -408,6 +413,7 @@ async function flush(){
     return;
   }
   Object.assign(lastSynced, snapshot);
+  saveLocal();                       // keep the snapshot across reloads
   setSync(dirtyFields().length ? 'syncing' : 'synced');
   if(dirtyFields().length) scheduleFlush();
 }
@@ -488,15 +494,33 @@ async function syncPhotos(){
   });
 }
 
+let realtimeOk = false;
+
 function subscribe(){
   sb.channel('kitchen-' + household)
     .on('postgres_changes',
         { event:'*', schema:'public', table:'kitchens', filter:'id=eq.' + household },
-        payload => applyRemote(payload.new))
+        payload => { realtimeOk = true; applyRemote(payload.new); })
     .on('postgres_changes',
         { event:'*', schema:'public', table:'photos', filter:'household=eq.' + household },
-        () => syncPhotos())
-    .subscribe();
+        () => { realtimeOk = true; syncPhotos(); })
+    .subscribe(status => { realtimeOk = status === 'SUBSCRIBED'; });
+}
+
+/* Realtime is the fast path, not the only one. If the tables aren't in the
+   supabase_realtime publication the channel still joins happily and simply
+   never delivers anything — so also poll while the app is on screen. Costs
+   one small row read; keeps sync working either way. */
+function startPolling(){
+  const refresh = () => {
+    if(!sb || !navigator.onLine) return;
+    if(document.visibilityState !== 'visible') return;
+    pull();
+  };
+  setInterval(refresh, 20000);
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible'){ refresh(); syncPhotos(); }
+  });
 }
 
 async function initCloud(){
@@ -517,6 +541,7 @@ async function initCloud(){
   await pull();
   await syncPhotos();
   subscribe();
+  startPolling();
 }
 
 /* ── Backup / restore ───────────────────────────────────────────────────

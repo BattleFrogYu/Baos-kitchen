@@ -14,6 +14,6 @@
 //    give anyone who found it full control of your database.
 // ─────────────────────────────────────────────────────────────────────────
 window.NIUS_CONFIG = {
-  url: 'https://battlefrogyu.github.io/Baos-kitchen/',
+  url: 'https://kmjnkgrbyfxkftypxmea.supabase.co',
   anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imttam5rZ3JieWZ4a2Z0eXB4bWVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0MTc2ODYsImV4cCI6MjA5OTk5MzY4Nn0.cJFSlYU0KJF5YnEhujrPOs_SmFyEayv0vbOEa-zcbec',
 };
