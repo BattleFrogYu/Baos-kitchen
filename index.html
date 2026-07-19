@@ -243,6 +243,9 @@ const state = {
   pairOpen: false,
   pairCode: '',
   categories: [...DEFAULT_CATS],
+  staples: [],              // ingredients you always have — hidden from the list
+  staplesOpen: false,
+  sort: 'menu',             // menu | quick | stale
   catsOpen: false,          // category manager sheet
   newCat: '',               // "add a category" field
   renaming: null,           // category being renamed
@@ -279,7 +282,7 @@ function saveLocal(){
   try{
     localStorage.setItem(STORE_KEY, JSON.stringify({
       v:2, cart:state.cart, checked:state.checked, recipes:state.recipes,
-      categories:state.categories,
+      categories:state.categories, staples:state.staples,
       // Persisted so "what has the server already seen" survives a reload.
       // Without it every field looks locally-edited on boot, and this device
       // would push its stale state over the other person's changes.
@@ -347,6 +350,7 @@ function load(){
     if(d.checked) state.checked = d.checked;
     if(Array.isArray(d.recipes) && d.recipes.length) state.recipes = d.recipes;
     if(Array.isArray(d.categories) && d.categories.length) state.categories = d.categories;
+    if(Array.isArray(d.staples)) state.staples = d.staples;
     if(d.synced)  Object.assign(lastSynced, d.synced);
     // v1 stored photos in localStorage — move them to IndexedDB, then reclaim.
     if(d.photos && Object.keys(d.photos).length){
@@ -375,13 +379,15 @@ let syncState = cloudConfigured ? 'connecting' : 'local';
 // Snapshot of what the server last agreed with, used to work out which
 // fields this device has changed. Avoids pushing (and clobbering) fields
 // the other person edited.
-const lastSynced = { recipes:null, cart:null, checked:null, categories:null };
-const SYNC_FIELDS = ['recipes', 'cart', 'checked', 'categories'];
+const lastSynced = { recipes:null, cart:null, checked:null, categories:null, staples:null };
+const SYNC_FIELDS = ['recipes', 'cart', 'checked', 'categories', 'staples'];
 
-/* `categories` is a newer column. If the database predates it, sync the rest
-   rather than failing every write — categories then stay on this device. */
-let syncCategories = true;
-const syncable = () => SYNC_FIELDS.filter(f => f !== 'categories' || syncCategories);
+/* `categories` and `staples` are newer columns. Where the database predates
+   them, sync everything else rather than failing every write — those two then
+   stay on this device until supabase-upgrade.sql is run. */
+const OPTIONAL_COLUMNS = ['categories', 'staples'];
+const columnOk = { categories:true, staples:true };
+const syncable = () => SYNC_FIELDS.filter(f => !OPTIONAL_COLUMNS.includes(f) || columnOk[f]);
 
 function setSync(s){
   if(syncState === s) return;
@@ -468,6 +474,7 @@ function applyRemote(row){
     if(mine.includes(f)) return;            // local edit pending — keep ours
     if(row[f] == null) return;
     if(f === 'categories' && (!Array.isArray(row[f]) || !row[f].length)) return;
+    if(f === 'staples' && !Array.isArray(row[f])) return;
     const incoming = JSON.stringify(row[f]);
     if(incoming === lastSynced[f]) return;  // nothing new
     state[f] = row[f];
@@ -614,12 +621,14 @@ async function initCloud(){
   if(!navigator.onLine){ setSync('offline'); return; }
   setSync('syncing');
 
-  // Does this database have the categories column? Selecting a missing column
+  // Which optional columns does this database have? Selecting a missing one
   // errors, so probe once rather than letting every write fail.
-  try{
-    const probe = await withTimeout(sb.from('kitchens').select('categories').limit(1));
-    syncCategories = !probe.error;
-  }catch(e){ syncCategories = false; }
+  for(const col of OPTIONAL_COLUMNS){
+    try{
+      const probe = await withTimeout(sb.from('kitchens').select(col).limit(1));
+      columnOk[col] = !probe.error;
+    }catch(e){ columnOk[col] = false; }
+  }
 
   await pull();
   await syncPhotos();
@@ -634,7 +643,7 @@ function exportBackup(){
   const payload = {
     app:'nius-kitchen', version:2, exported:new Date().toISOString(),
     recipes:state.recipes, cart:state.cart, checked:state.checked,
-    categories:state.categories, photos:state.photos,
+    categories:state.categories, staples:state.staples, photos:state.photos,
   };
   const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type:'application/json' }));
   const a = document.createElement('a');
@@ -661,6 +670,7 @@ function importBackup(file){
     state.cart    = d.cart    || {};
     state.checked = d.checked || {};
     if(Array.isArray(d.categories) && d.categories.length) state.categories = d.categories;
+    if(Array.isArray(d.staples)) state.staples = d.staples;
     reconcileCategories();
     state.photos  = d.photos  || {};
     Promise.all(Object.entries(state.photos).map(([k, v]) => photoPut(k, v))).catch(() => {});
@@ -719,9 +729,12 @@ function buildGroups(){
     });
   });
 
+  // Staples never reach the list — you already have them.
+  let hiddenStaples = 0;
   const byGroup = {};
   Object.keys(agg).forEach(key => {
     const it = agg[key];
+    if(isStaple(it.name)){ hiddenStaples++; return; }
     (byGroup[it.group] = byGroup[it.group] || []).push({ ...it, key });
   });
 
@@ -739,7 +752,7 @@ function buildGroups(){
       })),
     });
   });
-  return { groups, count: Object.keys(agg).length };
+  return { groups, count: Object.keys(agg).length - hiddenStaples, hiddenStaples };
 }
 
 /* Ingredient classification, in both scripts. An English-only test dropped
@@ -789,6 +802,47 @@ const TAG_LABEL = {
   seafood:'Seafood', egg:'Egg', tofu:'Tofu', meat:'Meat', veg:'Vegetarian',
 };
 
+/* ── Pantry staples ─────────────────────────────────────────────────────
+   Things you always have — soy sauce, salt, oil. Matched on name alone,
+   ignoring unit, since 酱油 is 酱油 however it's measured. */
+const stapleKey = n => (n || '').trim().toLowerCase();
+const isStaple = n => state.staples.includes(stapleKey(n));
+
+function toggleStaple(name){
+  const k = stapleKey(name);
+  state.staples = isStaple(k) ? state.staples.filter(s => s !== k) : [...state.staples, k];
+  save();
+}
+
+/** Every distinct ingredient across the menu — the staples picker list. */
+function allIngredients(){
+  const seen = new Map();
+  state.recipes.forEach(r => (r.ing || []).forEach(i => {
+    const k = stapleKey(i.n);
+    if(k && !seen.has(k)) seen.set(k, i.n.trim());
+  }));
+  return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+}
+
+/* ── Last cooked ────────────────────────────────────────────────────────
+   Stored on the recipe itself, so it rides along with the recipes column
+   and needs no schema change. */
+function daysSince(iso){
+  if(!iso) return null;
+  const d = (Date.now() - new Date(iso).getTime()) / 86400000;
+  return d < 0 ? 0 : Math.floor(d);
+}
+function lastCookedLabel(r){
+  const d = daysSince(r.lastCooked);
+  if(d === null) return 'never made';
+  if(d === 0) return 'made today';
+  if(d === 1) return 'made yesterday';
+  if(d < 7) return `made ${d} days ago`;
+  if(d < 14) return 'made last week';
+  if(d < 60) return `made ${Math.round(d / 7)} weeks ago`;
+  return `made ${Math.round(d / 30)} months ago`;
+}
+
 /** A dish's description, minus the old auto-filled placeholder. Existing
  *  recipes have 'Your recipe' saved, which reads as a bug under a real name. */
 function subtitleOf(r){
@@ -818,6 +872,7 @@ const ICON = {
   order: `<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1.5L8 22l2-1.5L12 22l2-1.5L16 22l2-1.5L20 22V2l-2 1.5L16 2l-2 1.5L12 2l-2 1.5L8 2 6 3.5 4 2zM8 8h8M8 12h8"/></svg>`,
   list:  `<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>`,
   add:   `<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18"/><path d="M12 8v8M8 12h8"/></svg>`,
+  check2: w => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
   pencil: w => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>`,
   check: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
 };
@@ -874,7 +929,8 @@ function renderFilters(){
   Object.keys(TAG_LABEL).forEach(t => {
     if(state.recipes.some(r => recipeTags(r).has(t))) tags.push(t);
   });
-  if(cats.length < 2 && tags.length < 2) return '';
+  const showSort = state.recipes.length > 2;
+  if(cats.length < 2 && tags.length < 2 && !showSort) return '';
 
   const chip = (label, active, act, val) => `
     <button data-act="${act}" data-val="${esc(val ?? '')}" style="flex:none;border:2px solid ${active ? 'var(--color-text)' : 'var(--color-divider)'};background:${active ? 'var(--color-text)' : 'transparent'};color:${active ? 'var(--color-bg)' : 'var(--color-text)'};padding:7px 11px;font-family:var(--font-heading);font-weight:800;font-size:11px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;white-space:nowrap;">${esc(label)}</button>`;
@@ -891,16 +947,34 @@ function renderFilters(){
            row(chip('Any', !state.filterTag, 'filterTag', '') +
                tags.map(t => chip(TAG_LABEL[t], state.filterTag === t, 'filterTag', t)).join(''));
   }
+  if(showSort){
+    out += `<div style="display:flex;justify-content:flex-end;padding:10px 20px 0;">
+      <button data-act="cycleSort" class="linkbtn" style="font-size:10px;">Sort: ${esc(SORT_LABEL[state.sort])} ↓</button>
+    </div>`;
+  }
   out += '<div style="height:12px;"></div></div>';
   return out;
 }
 
+const SORT_LABEL = { menu:'Menu order', quick:'Quickest first', stale:'Not made lately' };
+
 function visibleRecipes(){
-  return state.recipes.filter(r => {
+  const out = state.recipes.filter(r => {
     if(state.filterCat && r.cat !== state.filterCat) return false;
     if(state.filterTag && !recipeTags(r).has(state.filterTag)) return false;
     return true;
   });
+  if(state.sort === 'quick'){
+    out.sort((a, b) => (a.time || 0) - (b.time || 0));
+  }else if(state.sort === 'stale'){
+    // Never-made dishes first, then longest ago.
+    out.sort((a, b) => {
+      const ta = a.lastCooked ? new Date(a.lastCooked).getTime() : -Infinity;
+      const tb = b.lastCooked ? new Date(b.lastCooked).getTime() : -Infinity;
+      return ta - tb;
+    });
+  }
+  return out;
 }
 
 function renderMenu(){
@@ -918,30 +992,34 @@ function renderMenu(){
 
   const cards = shown.map(r => {
     const qty = state.cart[r.id] || 0;
+    // A dish with no photo gets no grey block — the placeholder used to be
+    // the biggest thing on screen while carrying the least information.
+    const photo = state.photos['photo-' + r.id];
     return `
-      <div style="border-bottom:2px solid var(--color-divider);padding:18px 20px 22px;">
-        <div style="position:relative;width:100%;height:172px;background:var(--color-surface);margin-bottom:14px;">
-          ${slot('photo-' + r.id, 'Add photo')}
-        </div>
-        <div data-act="open" data-id="${esc(r.id)}" style="cursor:pointer;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-            <div style="font-family:var(--font-heading);font-weight:800;font-size:22px;line-height:1.04;letter-spacing:-.02em;">${esc(r.name)}</div>
-            <span class="chip">${esc(r.cat)}</span>
-          </div>
-          ${subtitleOf(r) ? `<div class="muted" style="margin-top:5px;font-size:13px;">${esc(subtitleOf(r))}</div>` : ''}
-          <div style="margin-top:8px;font-size:12px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 70%,transparent);">${r.time} min · ${r.ing.length} ingredients</div>
-        </div>
-        <div style="margin-top:14px;">
-          ${qty > 0 ? `
-            <div style="display:flex;align-items:center;gap:10px;">
-              <button class="step" data-act="dec" data-id="${esc(r.id)}" style="width:42px;height:42px;font-size:22px;">−</button>
-              <div style="min-width:34px;text-align:center;font-family:var(--font-heading);font-weight:800;font-size:20px;">${qty}</div>
-              <button class="step" data-act="inc" data-id="${esc(r.id)}" style="width:42px;height:42px;font-size:22px;">+</button>
-              <span style="margin-left:6px;font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-accent);">In order</span>
+      <div style="border-bottom:2px solid var(--color-divider);padding:14px 20px;display:flex;gap:14px;align-items:flex-start;">
+        ${photo ? `<div style="position:relative;width:92px;height:92px;flex:none;background:var(--color-surface);">${slot('photo-' + r.id, '')}</div>` : ''}
+        <div style="flex:1;min-width:0;">
+          <div data-act="open" data-id="${esc(r.id)}" style="cursor:pointer;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+              <div style="font-family:var(--font-heading);font-weight:800;font-size:19px;line-height:1.08;letter-spacing:-.02em;">${esc(r.name)}</div>
+              <span class="chip">${esc(r.cat)}</span>
             </div>
-          ` : `
-            <button class="btn-accent" data-act="add" data-id="${esc(r.id)}">${ICON.plus(15)} Add to order</button>
-          `}
+            ${subtitleOf(r) ? `<div class="muted" style="margin-top:3px;font-size:12.5px;">${esc(subtitleOf(r))}</div>` : ''}
+            <div style="margin-top:4px;font-size:11.5px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 70%,transparent);">${r.time} min · ${r.ing.length} ingredients</div>
+            <div style="margin-top:2px;font-size:11.5px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:${r.lastCooked ? 'color-mix(in srgb,var(--color-text) 58%,transparent)' : 'var(--color-accent)'};">${esc(lastCookedLabel(r))}</div>
+          </div>
+          <div style="margin-top:9px;">
+            ${qty > 0 ? `
+              <div style="display:flex;align-items:center;gap:8px;">
+                <button class="step" data-act="dec" data-id="${esc(r.id)}" style="width:40px;height:40px;font-size:20px;">−</button>
+                <div style="min-width:26px;text-align:center;font-family:var(--font-heading);font-weight:800;font-size:18px;">${qty}</div>
+                <button class="step" data-act="inc" data-id="${esc(r.id)}" style="width:40px;height:40px;font-size:20px;">+</button>
+                <span style="margin-left:4px;font-family:var(--font-heading);font-weight:800;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-accent);">In order</span>
+              </div>
+            ` : `
+              <button class="btn-outline" data-act="add" data-id="${esc(r.id)}" style="padding:9px 14px;font-size:12px;">${ICON.plus(13)} Add</button>
+            `}
+          </div>
         </div>
       </div>`;
   }).join('');
@@ -952,6 +1030,8 @@ function renderMenu(){
       <button class="btn-outline" data-act="go" data-screen="add" style="margin-top:10px;">${ICON.plus(15)} Add a new dish</button>
       <div style="margin-top:26px;padding-top:18px;border-top:1px solid var(--color-divider);display:flex;align-items:center;justify-content:center;gap:10px;">
         <button data-act="openCats" class="linkbtn">Categories</button>
+        <span style="color:color-mix(in srgb,var(--color-text) 30%,transparent);">·</span>
+        <button data-act="openStaples" class="linkbtn">Staples</button>
         <span style="color:color-mix(in srgb,var(--color-text) 30%,transparent);">·</span>
         <button data-act="backup" class="linkbtn">Back up menu</button>
         <span style="color:color-mix(in srgb,var(--color-text) 30%,transparent);">·</span>
@@ -1030,6 +1110,36 @@ function renderCats(){
   </div>`;
 }
 
+/** Staples picker — everything the menu uses, tick what you always have. */
+function renderStaples(){
+  if(!state.staplesOpen) return '';
+  const all = allIngredients();
+
+  const rows = all.length ? all.map(([k, label]) => {
+    const on = state.staples.includes(k);
+    return `
+      <button data-act="toggleStaple" data-val="${esc(k)}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--color-divider);padding:13px 0;display:flex;align-items:center;gap:14px;cursor:pointer;">
+        <span style="width:22px;height:22px;flex:none;border:2px solid var(--color-text);display:flex;align-items:center;justify-content:center;background:${on ? 'var(--color-text)' : 'transparent'};">
+          <span style="display:flex;opacity:${on ? 1 : 0};">${ICON.check}</span>
+        </span>
+        <span style="flex:1;font-size:15px;font-weight:600;color:${on ? 'color-mix(in srgb,var(--color-text) 55%,transparent)' : 'var(--color-text)'};">${esc(label)}</span>
+      </button>`;
+  }).join('')
+  : `<p class="muted" style="font-size:14px;">Add some dishes first — their ingredients show up here.</p>`;
+
+  return `
+  <div data-act="staplesBackdrop" style="position:absolute;inset:0;z-index:36;background:rgba(32,30,29,.4);animation:nkFade .18s ease;">
+    <div data-stop class="nk-scroll sheet-safe" style="position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;background:var(--color-bg);animation:nkUp .28s cubic-bezier(.2,.8,.2,1);padding:22px 20px 30px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <h2 style="font-size:26px;line-height:1;letter-spacing:-.025em;">Always have</h2>
+        <button data-act="closeStaples" style="border:0;background:none;cursor:pointer;color:var(--color-text);padding:2px;">${ICON.close(20)}</button>
+      </div>
+      <p class="muted" style="margin-top:8px;font-size:13px;">Ticked ingredients stay off the shopping list. Good for soy sauce, salt, oil — things already in the cupboard.</p>
+      <div style="margin-top:14px;">${rows}</div>
+    </div>
+  </div>`;
+}
+
 /** The pairing sheet — how the second phone joins the same kitchen. */
 function renderPair(){
   if(!state.pairOpen) return '';
@@ -1102,6 +1212,7 @@ function renderOrder(){
       </div>
       <button class="btn-accent btn-wide" data-act="share" style="margin-top:16px;"><span>Send order to Bao</span>${ICON.send(20)}</button>
       <button class="btn-outline" data-act="go" data-screen="list" style="margin-top:10px;width:100%;padding:14px 18px;text-align:left;display:block;">View shopping list</button>
+      <button class="btn-outline" data-act="cooked" style="margin-top:10px;width:100%;padding:14px 18px;text-align:left;display:block;">${ICON.check2(14)} We cooked this — clear order</button>
     </div>
   </div>`;
 }
@@ -1115,7 +1226,7 @@ function renderList(){
     </div>`;
   }
 
-  const { groups } = buildGroups();
+  const { groups, hiddenStaples } = buildGroups();
   const left = groups.reduce((n,g) => n + g.items.filter(i => !i.done).length, 0);
 
   const body = groups.map(g => `
@@ -1139,6 +1250,11 @@ function renderList(){
     ${body}
     <div style="padding:20px;">
       <button class="btn-accent btn-wide" data-act="share"><span>Share list with Bao</span>${ICON.send(20)}</button>
+      <div style="margin-top:16px;text-align:center;">
+        <button data-act="openStaples" class="linkbtn" style="font-size:10px;">
+          ${hiddenStaples ? `${hiddenStaples} staple${hiddenStaples === 1 ? '' : 's'} hidden — edit` : 'Mark things you always have'}
+        </button>
+      </div>
     </div>
   </div>`;
 }
@@ -1333,7 +1449,7 @@ function render(){
   $scroll.scrollTop = keepScroll;
   lastScreen = state.screen;
 
-  $overlays.innerHTML = renderDetail() + renderPair() + renderCats() + renderToast();
+  $overlays.innerHTML = renderDetail() + renderPair() + renderCats() + renderStaples() + renderToast();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1428,6 +1544,32 @@ const ACTIONS = {
   filterCat(el){ state.filterCat = el.dataset.val || null; },
   filterTag(el){ state.filterTag = el.dataset.val || null; },
   clearFilters(){ state.filterCat = null; state.filterTag = null; },
+
+  cycleSort(){
+    const order = ['menu', 'quick', 'stale'];
+    state.sort = order[(order.indexOf(state.sort) + 1) % order.length];
+  },
+  cooked(){
+    const ids = Object.keys(state.cart);
+    if(!ids.length) return;
+    const now = new Date().toISOString();
+    ids.forEach(id => {
+      const r = recipeById(id);
+      if(r) r.lastCooked = now;
+    });
+    state.cart = {};
+    state.checked = {};
+    save();
+    showToast(`${ids.length} ${ids.length === 1 ? 'dish' : 'dishes'} marked as cooked`);
+  },
+
+  openStaples(){ state.staplesOpen = true; },
+  closeStaples(){ state.staplesOpen = false; },
+  staplesBackdrop(el, ev){
+    if(ev.target !== el) return false;
+    state.staplesOpen = false;
+  },
+  toggleStaple(el){ toggleStaple(el.dataset.val); },
 
   openCats(){ state.catsOpen = true; state.newCat = ''; state.renaming = null; },
   closeCats(){ state.catsOpen = false; state.renaming = null; },
