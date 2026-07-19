@@ -220,6 +220,7 @@ const state = {
   checked: {},     // ingredient key -> true
   detail: null,    // recipe id
   pairOpen: false,
+  pairCode: '',
   toast: null,
   recipes: SEED_RECIPES,
   photos: {},      // slot id -> data URL
@@ -520,6 +521,38 @@ function startPolling(){
   });
 }
 
+/* Switch this device to another household. This is the reliable pairing
+   path: an installed iOS web app gets its own storage sandbox, separate
+   from Safari, and launches from the manifest's start_url with no #k=
+   fragment — so a link opened in Safari cannot carry the pairing across.
+   Typing the code in from inside the installed app always works. */
+async function joinHousehold(raw){
+  let id = (raw || '').trim();
+  const fromLink = id.match(/[#&?]k=([A-Za-z0-9]+)/);   // tolerate a pasted link
+  if(fromLink) id = fromLink[1];
+
+  if(!/^[A-Za-z0-9]{6,32}$/.test(id)){ showToast('That code looks wrong'); return; }
+  if(id === household){ showToast('Already in this kitchen'); return; }
+
+  household = id;
+  localStorage.setItem(HOUSE_KEY, id);
+  // Treat the other phone as the source of truth, so nothing local is pushed
+  // over the kitchen we are joining.
+  SYNC_FIELDS.forEach(f => { lastSynced[f] = JSON.stringify(state[f]); });
+  state.pairOpen = false;
+  state.pairCode = '';
+  saveLocal();
+  setSync('syncing');
+  render();
+
+  if(!sb){ showToast('Paired'); return; }
+  sb.getChannels().forEach(c => sb.removeChannel(c));
+  await pull();
+  await syncPhotos();
+  subscribe();
+  showToast('Paired');
+}
+
 async function initCloud(){
   if(!cloudConfigured) return;
   household = resolveHousehold();
@@ -789,19 +822,30 @@ function renderSyncRow(){
 /** The pairing sheet — how the second phone joins the same kitchen. */
 function renderPair(){
   if(!state.pairOpen) return '';
-  const link = location.origin + location.pathname + '#k=' + household;
   return `
   <div data-act="pairBackdrop" style="position:absolute;inset:0;z-index:36;background:rgba(32,30,29,.4);animation:nkFade .18s ease;">
-    <div data-stop style="position:absolute;left:0;right:0;bottom:0;background:var(--color-bg);animation:nkUp .28s cubic-bezier(.2,.8,.2,1);padding:22px 20px 30px;">
+    <div data-stop class="nk-scroll" style="position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;background:var(--color-bg);animation:nkUp .28s cubic-bezier(.2,.8,.2,1);padding:22px 20px 30px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
         <h2 style="font-size:26px;line-height:1;letter-spacing:-.025em;">Pair a phone</h2>
         <button data-act="closePair" style="border:0;background:none;cursor:pointer;color:var(--color-text);padding:2px;">${ICON.close(20)}</button>
       </div>
-      <p class="muted" style="margin-top:8px;font-size:14px;">Open this link on the other phone and it joins the same kitchen — same menu, same order, same list.</p>
-      <div style="margin-top:14px;border:2px solid var(--color-text);padding:12px 14px;font-size:12px;word-break:break-all;line-height:1.45;background:var(--color-surface);">${esc(link)}</div>
-      <button class="btn-accent" data-act="copyPair" style="margin-top:12px;width:100%;padding:15px 18px;font-size:14px;display:block;text-align:left;">Copy link</button>
-      <p style="margin-top:14px;font-size:11px;line-height:1.5;color:color-mix(in srgb,var(--color-text) 45%,transparent);">
-        Anyone with this link can see and change your menu. Treat it like a house key — don't post it publicly.
+
+      <p class="muted" style="margin-top:8px;font-size:14px;">On the other phone: <b>add this app to the Home Screen first</b>, open it, then type this code in below.</p>
+
+      <div style="margin-top:16px;border:2px solid var(--color-text);background:var(--color-surface);padding:16px 14px;text-align:center;">
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:26px;letter-spacing:.16em;word-break:break-all;line-height:1.2;">${esc(household || '')}</div>
+      </div>
+      <button class="btn-accent" data-act="copyCode" style="margin-top:10px;width:100%;padding:14px 18px;font-size:14px;display:block;text-align:left;">Copy code</button>
+
+      <div style="margin-top:22px;padding-top:18px;border-top:2px solid var(--color-divider);">
+        <label class="label">Join another kitchen</label>
+        <p style="margin:0 0 10px;font-size:12px;line-height:1.5;color:color-mix(in srgb,var(--color-text) 50%,transparent);">Paste the code from the other phone. This device will switch to that kitchen and pull in its menu.</p>
+        <input class="nk-in nk-in-lg" data-inp="pairCode" value="${esc(state.pairCode || '')}" placeholder="paste code" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <button data-act="joinPair" class="btn-outline" style="margin-top:10px;width:100%;padding:14px 18px;display:block;text-align:left;">Join this kitchen</button>
+      </div>
+
+      <p style="margin-top:18px;font-size:11px;line-height:1.5;color:color-mix(in srgb,var(--color-text) 45%,transparent);">
+        Anyone with this code can see and change your menu. Treat it like a house key — don't post it publicly.
       </p>
     </div>
   </div>`;
@@ -1163,11 +1207,11 @@ const ACTIONS = {
   pair(){ state.pairOpen = true; },
   closePair(){ state.pairOpen = false; },
   pairBackdrop(el, ev){ if(ev.target === el) state.pairOpen = false; },
-  copyPair(){
-    const link = location.origin + location.pathname + '#k=' + household;
-    if(navigator.clipboard) navigator.clipboard.writeText(link).catch(() => {});
-    showToast('Link copied');
+  copyCode(){
+    if(navigator.clipboard) navigator.clipboard.writeText(household || '').catch(() => {});
+    showToast('Code copied');
   },
+  joinPair(){ joinHousehold(state.pairCode); },
 };
 
 app.addEventListener('click', ev => {
@@ -1190,7 +1234,9 @@ app.addEventListener('click', ev => {
 // Live-bind form inputs into state without re-rendering (keeps caret + focus).
 app.addEventListener('input', ev => {
   const el = ev.target;
-  if(el.dataset.inp === 'name' || el.dataset.inp === 'en' || el.dataset.inp === 'time'){
+  if(el.dataset.inp === 'pairCode'){
+    state.pairCode = el.value;
+  }else if(el.dataset.inp === 'name' || el.dataset.inp === 'en' || el.dataset.inp === 'time'){
     state.form[el.dataset.inp] = el.value;
   }else if(el.dataset.inp === 'ing'){
     state.form.ingredients[Number(el.dataset.i)][el.dataset.f] = el.value;

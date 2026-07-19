@@ -2,7 +2,6 @@
   "name": "Bao's Kitchen",
   "short_name": "Bao's Kitchen",
   "description": "Pick tonight's dishes and send the shopping list.",
-  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
