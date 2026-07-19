@@ -207,7 +207,7 @@ const SEED_RECIPES = [
   ]},
 ];
 
-const CATS = ['Soup','Grill','Fresh','Rice','Curry','Sweet'];
+const DEFAULT_CATS = ['Soup','Grill','Fresh','Rice','Curry','Sweet'];
 const GROUP_ORDER = ['Protein','Produce','Herbs & Aromatics','Pantry'];
 const STORE_KEY = 'nius-kitchen/v1';
 
@@ -221,6 +221,13 @@ const state = {
   detail: null,    // recipe id
   pairOpen: false,
   pairCode: '',
+  categories: [...DEFAULT_CATS],
+  catsOpen: false,          // category manager sheet
+  newCat: '',               // "add a category" field
+  renaming: null,           // category being renamed
+  renameTo: '',
+  filterCat: null,          // menu filter — null means all
+  filterTag: null,
   toast: null,
   recipes: SEED_RECIPES,
   photos: {},      // slot id -> data URL
@@ -239,10 +246,19 @@ function resetForm(){
 /* Recipes, cart and check-offs live in localStorage — small and synchronous.
    Photos live in IndexedDB: base64 images blow localStorage's ~5MB cap after
    a dozen or so dishes, and it fails silently when it does. */
+/** Any category a dish actually uses must exist in the list, or that dish
+ *  would show under a filter chip that isn't there. Never removes anything. */
+function reconcileCategories(){
+  state.recipes.forEach(r => {
+    if(r.cat && !state.categories.includes(r.cat)) state.categories.push(r.cat);
+  });
+}
+
 function saveLocal(){
   try{
     localStorage.setItem(STORE_KEY, JSON.stringify({
       v:2, cart:state.cart, checked:state.checked, recipes:state.recipes,
+      categories:state.categories,
       // Persisted so "what has the server already seen" survives a reload.
       // Without it every field looks locally-edited on boot, and this device
       // would push its stale state over the other person's changes.
@@ -309,6 +325,7 @@ function load(){
     if(d.cart)    state.cart    = d.cart;
     if(d.checked) state.checked = d.checked;
     if(Array.isArray(d.recipes) && d.recipes.length) state.recipes = d.recipes;
+    if(Array.isArray(d.categories) && d.categories.length) state.categories = d.categories;
     if(d.synced)  Object.assign(lastSynced, d.synced);
     // v1 stored photos in localStorage — move them to IndexedDB, then reclaim.
     if(d.photos && Object.keys(d.photos).length){
@@ -337,8 +354,13 @@ let syncState = cloudConfigured ? 'connecting' : 'local';
 // Snapshot of what the server last agreed with, used to work out which
 // fields this device has changed. Avoids pushing (and clobbering) fields
 // the other person edited.
-const lastSynced = { recipes:null, cart:null, checked:null };
-const SYNC_FIELDS = ['recipes', 'cart', 'checked'];
+const lastSynced = { recipes:null, cart:null, checked:null, categories:null };
+const SYNC_FIELDS = ['recipes', 'cart', 'checked', 'categories'];
+
+/* `categories` is a newer column. If the database predates it, sync the rest
+   rather than failing every write — categories then stay on this device. */
+let syncCategories = true;
+const syncable = () => SYNC_FIELDS.filter(f => f !== 'categories' || syncCategories);
 
 function setSync(s){
   if(syncState === s) return;
@@ -368,7 +390,7 @@ function resolveHousehold(){
 }
 
 function dirtyFields(){
-  return SYNC_FIELDS.filter(f => JSON.stringify(state[f]) !== lastSynced[f]);
+  return syncable().filter(f => JSON.stringify(state[f]) !== lastSynced[f]);
 }
 
 /* An unreachable host hangs rather than failing, which would leave the status
@@ -421,9 +443,10 @@ function applyRemote(row){
   if(!row) return;
   const mine = dirtyFields();
   let changed = false;
-  SYNC_FIELDS.forEach(f => {
+  syncable().forEach(f => {
     if(mine.includes(f)) return;            // local edit pending — keep ours
     if(row[f] == null) return;
+    if(f === 'categories' && (!Array.isArray(row[f]) || !row[f].length)) return;
     const incoming = JSON.stringify(row[f]);
     if(incoming === lastSynced[f]) return;  // nothing new
     state[f] = row[f];
@@ -431,6 +454,7 @@ function applyRemote(row){
     changed = true;
   });
   if(changed){
+    reconcileCategories();
     saveLocal();
     render();
   }
@@ -444,12 +468,12 @@ async function pull(){
 
   if(!data){
     // First run for this household — seed the server from this device.
-    SYNC_FIELDS.forEach(f => { lastSynced[f] = null; });
+    syncable().forEach(f => { lastSynced[f] = null; });
     await flush();
     return;
   }
   applyRemote(data);
-  SYNC_FIELDS.forEach(f => {
+  syncable().forEach(f => {
     if(data[f] != null && !dirtyFields().includes(f)) lastSynced[f] = JSON.stringify(state[f]);
   });
   await flush();
@@ -568,6 +592,14 @@ async function initCloud(){
 
   if(!navigator.onLine){ setSync('offline'); return; }
   setSync('syncing');
+
+  // Does this database have the categories column? Selecting a missing column
+  // errors, so probe once rather than letting every write fail.
+  try{
+    const probe = await withTimeout(sb.from('kitchens').select('categories').limit(1));
+    syncCategories = !probe.error;
+  }catch(e){ syncCategories = false; }
+
   await pull();
   await syncPhotos();
   subscribe();
@@ -580,7 +612,8 @@ async function initCloud(){
 function exportBackup(){
   const payload = {
     app:'nius-kitchen', version:2, exported:new Date().toISOString(),
-    recipes:state.recipes, cart:state.cart, checked:state.checked, photos:state.photos,
+    recipes:state.recipes, cart:state.cart, checked:state.checked,
+    categories:state.categories, photos:state.photos,
   };
   const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type:'application/json' }));
   const a = document.createElement('a');
@@ -606,6 +639,8 @@ function importBackup(file){
     state.recipes = d.recipes;
     state.cart    = d.cart    || {};
     state.checked = d.checked || {};
+    if(Array.isArray(d.categories) && d.categories.length) state.categories = d.categories;
+    reconcileCategories();
     state.photos  = d.photos  || {};
     Promise.all(Object.entries(state.photos).map(([k, v]) => photoPut(k, v))).catch(() => {});
 
@@ -656,7 +691,9 @@ function buildGroups(){
     const batches = state.cart[id];
     r.ing.forEach(i => {
       const key = (i.n + '|' + i.u).toLowerCase();
-      if(!agg[key]) agg[key] = { name:i.n, unit:i.u, qty:0, group:i.g || 'Pantry' };
+      // Classify from the name, not the stored group: recipes saved before
+      // the classifier understood Chinese all carry group 'Pantry'.
+      if(!agg[key]) agg[key] = { name:i.n, unit:i.u, qty:0, group:guessGroup(i.n) };
       agg[key].qty += (i.q || 0) * batches;
     });
   });
@@ -684,16 +721,62 @@ function buildGroups(){
   return { groups, count: Object.keys(agg).length };
 }
 
-/** Guess a shopping-list aisle for a hand-entered ingredient.
- *  Aromatics are tested before produce on purpose: "lemongrass" would
- *  otherwise match `lemon` and land in Produce, while the seed recipes file it
- *  under Herbs & Aromatics — the same ingredient would then split into two
- *  separate shopping-list rows instead of adding up. Same for garlic. */
+/* Ingredient classification, in both scripts. An English-only test dropped
+   every Chinese ingredient into Pantry, which collapsed the shopping list
+   into one undifferentiated block.
+
+   Order matters throughout:
+   — egg before chicken, or 鸡蛋 reads as 鸡
+   — spices before produce, or 花椒 reads as 椒
+   — aromatics before produce, so 大蒜 and 生姜 sit with the herbs where you
+     actually pick them up, and so "lemongrass" doesn't match "lemon". */
+const ING_RULES = [
+  { g:'Protein', tag:'egg',     re:/\beggs?\b|鸡蛋|鸭蛋|皮蛋|咸蛋|蛋(?!糕)/i },
+  { g:'Protein', tag:'tofu',    re:/tofu|bean ?curd|豆腐|豆干|腐竹|千张|素鸡|豆皮/i },
+  { g:'Protein', tag:'seafood', re:/fish|shrimp|prawn|crab|squid|clam|scallop|oyster|mussel|salmon|tuna|鱼|虾|蟹|鱿|贝|蛤|蛏|海参|海鲜|带子|墨鱼/i },
+  { g:'Protein', tag:'pork',    re:/pork|bacon|\bham\b|排骨|猪|五花|里脊|梅肉|肉末|肉馅|腊肉|培根|火腿|蹄/i },
+  { g:'Protein', tag:'beef',    re:/beef|steak|brisket|oxtail|veal|牛/i },
+  { g:'Protein', tag:'chicken', re:/chicken|poultry|鸡/i },
+  { g:'Protein', tag:'duck',    re:/\bduck\b|鸭/i },
+  { g:'Protein', tag:'lamb',    re:/lamb|mutton|羊/i },
+  { g:'Protein', tag:'meat',    re:/\bmeat\b|肉/i },
+
+  { g:'Pantry',  re:/花椒|八角|桂皮|香叶|五香|胡椒|干辣椒|辣椒面|孜然|咖喱粉/i },
+
+  { g:'Herbs & Aromatics',
+    re:/garlic|ginger|scallion|spring onion|shallot|chive|cilantro|coriander|parsley|basil|mint|lemongrass|herb|蒜|姜|葱|香菜|芫荽|罗勒|薄荷|香茅|韭/i },
+
+  { g:'Produce',
+    re:/onion|tomato|potato|carrot|cucumber|lettuce|cabbage|spinach|mushroom|sprout|pepper|chill?i|eggplant|aubergine|zucchini|broccoli|celery|radish|lime|lemon|apple|pear|fruit|veg|菜|瓜|菇|笋|茄|椒|萝卜|土豆|马铃薯|番茄|西红柿|豆芽|山药|藕|玉米|芦笋|木耳|银耳|花菜|芹|莴|苗|芽|茭白|荸荠/i },
+];
+
+/** Shopping-list aisle for an ingredient. Computed at display time rather
+ *  than stored, so existing recipes benefit without migrating their data. */
 function guessGroup(name){
-  if(/chicken|beef|pork|shrimp|fish|egg|tofu|meat|lamb/i.test(name)) return 'Protein';
-  if(/mint|cilantro|basil|ginger|lemongrass|herb|scallion|garlic|shallot|chive/i.test(name)) return 'Herbs & Aromatics';
-  if(/onion|tomato|potato|carrot|cucumber|lettuce|lime|lemon|pepper|veg|mushroom|sprout/i.test(name)) return 'Produce';
-  return 'Pantry';
+  const hit = ING_RULES.find(r => r.re.test(name || ''));
+  return hit ? hit.g : 'Pantry';
+}
+
+/** Which protein an ingredient represents, if any — drives the menu filter. */
+function ingredientTag(name){
+  const hit = ING_RULES.find(r => r.re.test(name || ''));
+  return hit && hit.tag ? hit.tag : null;
+}
+
+const TAG_LABEL = {
+  pork:'Pork', beef:'Beef', chicken:'Chicken', duck:'Duck', lamb:'Lamb',
+  seafood:'Seafood', egg:'Egg', tofu:'Tofu', meat:'Meat', veg:'Vegetarian',
+};
+
+/** Tags for a dish. No protein anywhere means it's vegetarian. */
+function recipeTags(r){
+  const tags = new Set();
+  (r.ing || []).forEach(i => {
+    const t = ingredientTag(i.n);
+    if(t) tags.add(t);
+  });
+  if(!tags.size) tags.add('veg');
+  return tags;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -754,8 +837,58 @@ function renderHeader(){
 }
 
 /* ── Menu screen ────────────────────────────────────────────────────────── */
+
+/** Filter chips. Only tags actually present in the menu are offered, so the
+ *  row stays short and never shows a chip that matches nothing. */
+function renderFilters(){
+  const cats = state.categories.filter(c => state.recipes.some(r => r.cat === c));
+  const tags = [];
+  Object.keys(TAG_LABEL).forEach(t => {
+    if(state.recipes.some(r => recipeTags(r).has(t))) tags.push(t);
+  });
+  if(cats.length < 2 && tags.length < 2) return '';
+
+  const chip = (label, active, act, val) => `
+    <button data-act="${act}" data-val="${esc(val ?? '')}" style="flex:none;border:2px solid ${active ? 'var(--color-text)' : 'var(--color-divider)'};background:${active ? 'var(--color-text)' : 'transparent'};color:${active ? 'var(--color-bg)' : 'var(--color-text)'};padding:7px 11px;font-family:var(--font-heading);font-weight:800;font-size:11px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;white-space:nowrap;">${esc(label)}</button>`;
+
+  const row = inner => `<div class="nk-scroll" style="display:flex;gap:7px;overflow-x:auto;padding:0 20px;">${inner}</div>`;
+
+  let out = '<div style="padding:14px 0 4px;border-bottom:2px solid var(--color-divider);">';
+  if(cats.length > 1){
+    out += row(chip('All', !state.filterCat, 'filterCat', '') +
+               cats.map(c => chip(c, state.filterCat === c, 'filterCat', c)).join(''));
+  }
+  if(tags.length > 1){
+    out += `<div style="height:7px;"></div>` +
+           row(chip('Any', !state.filterTag, 'filterTag', '') +
+               tags.map(t => chip(TAG_LABEL[t], state.filterTag === t, 'filterTag', t)).join(''));
+  }
+  out += '<div style="height:12px;"></div></div>';
+  return out;
+}
+
+function visibleRecipes(){
+  return state.recipes.filter(r => {
+    if(state.filterCat && r.cat !== state.filterCat) return false;
+    if(state.filterTag && !recipeTags(r).has(state.filterTag)) return false;
+    return true;
+  });
+}
+
 function renderMenu(){
-  const cards = state.recipes.map(r => {
+  const shown = visibleRecipes();
+  const filtering = !!(state.filterCat || state.filterTag);
+
+  if(!shown.length){
+    return renderFilters() + `
+      <div style="padding:60px 34px;text-align:center;">
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:20px;letter-spacing:-.02em;">Nothing matches</div>
+        <p class="muted" style="margin-top:8px;font-size:14px;">${filtering ? 'No dish fits both filters.' : 'The menu is empty.'}</p>
+        ${filtering ? `<button class="btn-outline" data-act="clearFilters" style="margin-top:14px;">Clear filters</button>` : ''}
+      </div>`;
+  }
+
+  const cards = shown.map(r => {
     const qty = state.cart[r.id] || 0;
     return `
       <div style="border-bottom:2px solid var(--color-divider);padding:18px 20px 22px;">
@@ -785,11 +918,13 @@ function renderMenu(){
       </div>`;
   }).join('');
 
-  return `<div>${cards}
+  return `<div>${renderFilters()}${cards}
     <div style="padding:26px 20px 34px;text-align:center;">
       <div style="font-size:12px;letter-spacing:.04em;color:color-mix(in srgb,var(--color-text) 45%,transparent);">Want something not here?</div>
       <button class="btn-outline" data-act="go" data-screen="add" style="margin-top:10px;">${ICON.plus(15)} Add a new dish</button>
       <div style="margin-top:26px;padding-top:18px;border-top:1px solid var(--color-divider);display:flex;align-items:center;justify-content:center;gap:10px;">
+        <button data-act="openCats" class="linkbtn">Categories</button>
+        <span style="color:color-mix(in srgb,var(--color-text) 30%,transparent);">·</span>
         <button data-act="backup" class="linkbtn">Back up menu</button>
         <span style="color:color-mix(in srgb,var(--color-text) 30%,transparent);">·</span>
         <button data-act="restore" class="linkbtn">Restore</button>
@@ -817,6 +952,54 @@ function renderSyncRow(){
       ${cloudConfigured ? `<span style="color:color-mix(in srgb,var(--color-text) 25%,transparent);">·</span>
       <button data-act="pair" class="linkbtn" style="font-size:10px;">Pair a phone</button>` : ''}
     </div>`;
+}
+
+/** Category manager. Renaming carries every dish across with it, and a
+ *  category still in use can't be deleted — either would orphan dishes. */
+function renderCats(){
+  if(!state.catsOpen) return '';
+
+  const rows = state.categories.map(c => {
+    const used = state.recipes.filter(r => r.cat === c).length;
+
+    if(state.renaming === c){
+      return `
+        <div style="padding:10px 0;border-bottom:1px solid var(--color-divider);">
+          <input class="nk-in" data-inp="renameTo" value="${esc(state.renameTo)}" style="width:100%;" autocapitalize="off">
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button data-act="renameSave" class="btn-accent" style="flex:1;padding:10px;font-size:12px;justify-content:center;">Save</button>
+            <button data-act="renameCancel" class="btn-outline" style="flex:1;padding:10px;font-size:12px;justify-content:center;">Cancel</button>
+          </div>
+        </div>`;
+    }
+
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--color-divider);">
+        <span style="flex:1;font-size:15px;font-weight:600;">${esc(c)}</span>
+        <span style="font-size:11px;color:color-mix(in srgb,var(--color-text) 45%,transparent);white-space:nowrap;">${used} ${used === 1 ? 'dish' : 'dishes'}</span>
+        <button data-act="renameStart" data-val="${esc(c)}" style="border:0;background:none;cursor:pointer;color:var(--color-accent);padding:4px;">${ICON.pencil(15)}</button>
+        <button data-act="catDelete" data-val="${esc(c)}" style="border:0;background:none;cursor:pointer;padding:4px;color:${used ? 'color-mix(in srgb,var(--color-text) 22%,transparent)' : 'color-mix(in srgb,var(--color-text) 55%,transparent)'};">${ICON.close(16)}</button>
+      </div>`;
+  }).join('');
+
+  return `
+  <div data-act="catsBackdrop" style="position:absolute;inset:0;z-index:36;background:rgba(32,30,29,.4);animation:nkFade .18s ease;">
+    <div data-stop class="nk-scroll" style="position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;background:var(--color-bg);animation:nkUp .28s cubic-bezier(.2,.8,.2,1);padding:22px 20px 30px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <h2 style="font-size:26px;line-height:1;letter-spacing:-.025em;">Categories</h2>
+        <button data-act="closeCats" style="border:0;background:none;cursor:pointer;color:var(--color-text);padding:2px;">${ICON.close(20)}</button>
+      </div>
+      <p class="muted" style="margin-top:8px;font-size:13px;">Renaming moves every dish in that category with it. A category in use can't be removed.</p>
+
+      <div style="margin-top:14px;">${rows}</div>
+
+      <div style="margin-top:18px;">
+        <label class="label">Add a category</label>
+        <input class="nk-in nk-in-lg" data-inp="newCat" value="${esc(state.newCat)}" placeholder="e.g. 小炒 / Stir-fry" autocapitalize="off">
+        <button data-act="catAdd" class="btn-outline" style="margin-top:10px;width:100%;padding:14px 18px;display:block;text-align:left;">Add category</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 /** The pairing sheet — how the second phone joins the same kitchen. */
@@ -936,10 +1119,11 @@ function renderList(){
 function renderAdd(){
   const f = state.form;
 
-  const cats = CATS.map(c => {
+  const cats = state.categories.map(c => {
     const on = f.cat === c;
     return `<button data-act="cat" data-cat="${esc(c)}" style="border:2px solid var(--color-text);background:${on ? 'var(--color-text)' : 'transparent'};color:${on ? 'var(--color-bg)' : 'var(--color-text)'};padding:8px 12px;font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;">${esc(c)}</button>`;
-  }).join('');
+  }).join('')
+  + `<button data-act="openCats" style="border:2px dashed var(--color-divider);background:transparent;color:var(--color-accent);padding:8px 12px;font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;">Edit</button>`;
 
   const rows = f.ingredients.map((ing, i) => `
     <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
@@ -1121,7 +1305,7 @@ function render(){
   $scroll.scrollTop = keepScroll;
   lastScreen = state.screen;
 
-  $overlays.innerHTML = renderDetail() + renderPair() + renderToast();
+  $overlays.innerHTML = renderDetail() + renderPair() + renderCats() + renderToast();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1213,6 +1397,55 @@ const ACTIONS = {
     if(ev.target !== el) return false;   // tap inside the sheet — leave it alone
     state.pairOpen = false;
   },
+  filterCat(el){ state.filterCat = el.dataset.val || null; },
+  filterTag(el){ state.filterTag = el.dataset.val || null; },
+  clearFilters(){ state.filterCat = null; state.filterTag = null; },
+
+  openCats(){ state.catsOpen = true; state.newCat = ''; state.renaming = null; },
+  closeCats(){ state.catsOpen = false; state.renaming = null; },
+  catsBackdrop(el, ev){
+    if(ev.target !== el) return false;
+    state.catsOpen = false; state.renaming = null;
+  },
+  catAdd(){
+    const name = (state.newCat || '').trim();
+    if(!name){ showToast('Type a name first'); return; }
+    if(state.categories.some(c => c.toLowerCase() === name.toLowerCase())){
+      showToast('That category exists'); return;
+    }
+    state.categories.push(name);
+    state.newCat = '';
+    save();
+  },
+  renameStart(el){ state.renaming = el.dataset.val; state.renameTo = el.dataset.val; },
+  renameCancel(){ state.renaming = null; state.renameTo = ''; },
+  renameSave(){
+    const from = state.renaming;
+    const to = (state.renameTo || '').trim();
+    if(!to){ showToast('Name can\'t be empty'); return; }
+    if(to !== from && state.categories.some(c => c.toLowerCase() === to.toLowerCase())){
+      showToast('That category exists'); return;
+    }
+    state.categories = state.categories.map(c => c === from ? to : c);
+    // Carry the dishes across, or they'd point at a category that's gone.
+    state.recipes.forEach(r => { if(r.cat === from) r.cat = to; });
+    if(state.filterCat === from) state.filterCat = to;
+    if(state.form.cat === from) state.form.cat = to;
+    state.renaming = null;
+    state.renameTo = '';
+    save();
+  },
+  catDelete(el){
+    const c = el.dataset.val;
+    const used = state.recipes.filter(r => r.cat === c).length;
+    if(used){ showToast(`${used} ${used === 1 ? 'dish uses' : 'dishes use'} it`); return; }
+    if(state.categories.length <= 1){ showToast('Keep at least one'); return; }
+    state.categories = state.categories.filter(x => x !== c);
+    if(state.filterCat === c) state.filterCat = null;
+    if(state.form.cat === c) state.form.cat = state.categories[0];
+    save();
+  },
+
   copyCode(){
     if(navigator.clipboard) navigator.clipboard.writeText(household || '').catch(() => {});
     showToast('Code copied');
@@ -1249,6 +1482,10 @@ app.addEventListener('input', ev => {
   const el = ev.target;
   if(el.dataset.inp === 'pairCode'){
     state.pairCode = el.value;
+  }else if(el.dataset.inp === 'newCat'){
+    state.newCat = el.value;
+  }else if(el.dataset.inp === 'renameTo'){
+    state.renameTo = el.value;
   }else if(el.dataset.inp === 'name' || el.dataset.inp === 'en' || el.dataset.inp === 'time'){
     state.form[el.dataset.inp] = el.value;
   }else if(el.dataset.inp === 'ing'){
@@ -1382,6 +1619,7 @@ backuppick.addEventListener('change', () => {
 });
 
 load();
+reconcileCategories();
 render();
 
 // Photos load asynchronously, so paint once without them and again when ready.
