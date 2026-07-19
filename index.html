@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Niu's Kitchen</title>
+<title>Bao's Kitchen</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#ec3013">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Niu's Kitchen">
+<meta name="apple-mobile-web-app-title" content="Bao's Kitchen">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png" type="image/png">
 <script src="config.js"></script>
@@ -58,7 +58,6 @@ button{font-family:inherit}
   display:flex;align-items:center;justify-content:space-between;padding:18px 30px 0;
   font-family:-apple-system,system-ui,sans-serif;font-size:14px;font-weight:600;color:var(--color-text);
 }
-.statusbar.on-white{color:#000}
 @media (max-width:460px){
   body{background:var(--color-bg);align-items:stretch}
   .phone{width:100%;height:100dvh;border-radius:0;padding:0}
@@ -220,8 +219,6 @@ const state = {
   cart: {},        // recipe id -> batch count
   checked: {},     // ingredient key -> true
   detail: null,    // recipe id
-  share: false,
-  shareSent: false,
   pairOpen: false,
   toast: null,
   recipes: SEED_RECIPES,
@@ -710,7 +707,7 @@ function renderHeader(){
     <div style="display:flex;align-items:center;justify-content:space-between;">
       <div style="display:flex;align-items:center;gap:9px;">
         <div style="width:20px;height:20px;background:var(--color-accent);"></div>
-        <span style="font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.14em;text-transform:uppercase;">Niu's Kitchen</span>
+        <span style="font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.14em;text-transform:uppercase;">Bao's Kitchen</span>
       </div>
       ${state.screen === 'add' ? `
         <button data-act="go" data-screen="menu" style="border:0;background:none;font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-accent);cursor:pointer;padding:6px 0;">Cancel</button>
@@ -1013,77 +1010,43 @@ function renderDetail(){
   </div>`;
 }
 
-/* ── iMessage share sheet ───────────────────────────────────────────────── */
-function renderShare(){
-  if(!state.share) return '';
-  const { groups, count: ingCount } = buildGroups();
+/* ── Sharing ────────────────────────────────────────────────────────────
+   Hands the order and shopping list to the OS share sheet, so it can go out
+   through Messages, WhatsApp, Mail — whatever is on the phone. */
+function shareText(){
+  const ids = Object.keys(state.cart);
+  const { groups, count } = buildGroups();
+  const out = ["Bao's Kitchen — tonight", ''];
 
-  const dishes = Object.keys(state.cart).map(id => `
-    <div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:14px;">
-      <span style="font-weight:600;color:var(--color-text);">${esc(recipeById(id).name)}</span>
-      <span style="font-family:var(--font-heading);font-weight:800;color:var(--color-text);">×${state.cart[id]}</span>
-    </div>`).join('');
+  out.push('ORDERING');
+  ids.forEach(id => out.push(`• ${recipeById(id).name} ×${state.cart[id]}`));
 
-  const buy = groups.map(g => `
-    <div style="margin-bottom:4px;">
-      <div style="font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 45%,transparent);">${esc(g.group)}</div>
-      ${g.items.map(it => `
-        <div style="display:flex;justify-content:space-between;gap:10px;font-size:13.5px;padding:1px 0;">
-          <span style="color:var(--color-text);">${esc(it.name)}</span>
-          <span style="font-weight:700;color:color-mix(in srgb,var(--color-text) 65%,transparent);">${esc(it.qty)}</span>
-        </div>`).join('')}
-    </div>`).join('');
+  out.push('', `SHOPPING LIST (${count} items)`);
+  groups.forEach(g => {
+    out.push('', g.group.toUpperCase());
+    g.items.forEach(it => out.push(`• ${it.name} — ${it.qty}`));
+  });
+  return out.join('\n');
+}
 
-  return `
-  <div style="position:absolute;inset:0;z-index:35;background:#fff;display:flex;flex-direction:column;animation:nkUp .3s cubic-bezier(.2,.8,.2,1);">
-    <div style="flex:none;padding:54px 12px 10px;border-bottom:.5px solid rgba(0,0,0,.15);background:rgba(249,249,249,.94);backdrop-filter:blur(12px);">
-      <div style="display:flex;align-items:center;">
-        <button data-act="closeShare" style="border:0;background:none;cursor:pointer;display:flex;align-items:center;padding:6px;">
-          <svg width="12" height="20" viewBox="0 0 12 20" fill="none"><path d="M10 2 2 10l8 8" stroke="#0a84ff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
-          <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(#b7b3ae,#8a8681);display:flex;align-items:center;justify-content:center;color:#fff;font-family:-apple-system,system-ui;font-weight:600;font-size:19px;">B</div>
-          <div style="margin-top:3px;font-family:-apple-system,system-ui;font-size:12px;color:#000;display:flex;align-items:center;gap:3px;">Bao <span>❤️</span></div>
-        </div>
-        <div style="width:40px;"></div>
-      </div>
-    </div>
+async function doShare(){
+  if(Object.keys(state.cart).length === 0){ showToast('Add a dish first'); return; }
+  const text = shareText();
 
-    <div class="nk-scroll" style="flex:1;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:8px;background:#fff;">
-      <div style="text-align:center;font-family:-apple-system,system-ui;font-size:11px;color:#8e8e93;margin-bottom:4px;">Today 5:12 PM</div>
-      <div style="align-self:flex-start;max-width:75%;background:#e9e9eb;color:#000;border-radius:18px;padding:9px 14px;font-family:-apple-system,system-ui;font-size:16px;line-height:1.3;">What should I get for dinner tonight? 😋</div>
-
-      <div style="align-self:flex-end;max-width:86%;margin-top:6px;">
-        <div style="border-radius:20px;overflow:hidden;background:var(--color-bg);border:2px solid var(--color-text);">
-          <div style="background:var(--color-accent);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:8px;">
-            <div style="width:15px;height:15px;background:#fff;"></div>
-            <span style="font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.1em;text-transform:uppercase;">Niu's Kitchen — Tonight</span>
-          </div>
-          <div style="padding:12px 14px;">
-            <div style="font-family:var(--font-heading);font-weight:800;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 55%,transparent);margin-bottom:6px;">Ordering</div>
-            ${dishes}
-            <div style="height:2px;background:var(--color-divider);margin:10px 0;"></div>
-            <div style="font-family:var(--font-heading);font-weight:800;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent);margin-bottom:6px;">Buy (${ingCount} items)</div>
-            ${buy}
-          </div>
-        </div>
-        <div style="text-align:right;margin-top:3px;font-family:-apple-system,system-ui;font-size:11px;color:#8e8e93;">${state.shareSent ? 'Delivered' : 'Draft — tap send'}</div>
-      </div>
-    </div>
-
-    <div style="flex:none;padding:8px 12px 30px;border-top:.5px solid rgba(0,0,0,.12);background:#fff;">
-      ${state.shareSent ? `
-        <button data-act="closeShare" style="width:100%;background:var(--color-text);color:var(--color-bg);border:0;padding:14px;font-family:var(--font-heading);font-weight:800;font-size:14px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;">Done</button>
-      ` : `
-        <div style="display:flex;align-items:center;gap:8px;">
-          <div style="flex:1;border:1px solid #d1d1d6;border-radius:19px;padding:9px 14px;font-family:-apple-system,system-ui;font-size:15px;color:#8e8e93;">Attached your order…</div>
-          <button data-act="send" style="width:38px;height:38px;border-radius:50%;background:#0a84ff;border:0;display:flex;align-items:center;justify-content:center;cursor:pointer;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-          </button>
-        </div>
-      `}
-    </div>
-  </div>`;
+  // Must be called straight off the tap, and only exists over https.
+  if(navigator.share){
+    try{ await navigator.share({ title: "Bao's Kitchen", text }); }
+    catch(e){ /* dismissing the sheet rejects — that isn't a failure */ }
+    return;
+  }
+  if(navigator.clipboard){
+    try{
+      await navigator.clipboard.writeText(text);
+      showToast('Copied — paste into Messages');
+      return;
+    }catch(e){}
+  }
+  showToast('Sharing not available here');
 }
 
 function renderToast(){
@@ -1114,8 +1077,7 @@ function render(){
   $scroll.scrollTop = keepScroll;
   lastScreen = state.screen;
 
-  $overlays.innerHTML = renderDetail() + renderShare() + renderPair() + renderToast();
-  $status.classList.toggle('on-white', state.share);
+  $overlays.innerHTML = renderDetail() + renderPair() + renderToast();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1187,13 +1149,7 @@ const ACTIONS = {
     save();
   },
   reset(){ state.checked = {}; save(); },
-  share(){
-    if(Object.keys(state.cart).length === 0){ showToast('Add a dish first'); return; }
-    state.share = true;
-    state.shareSent = false;
-  },
-  send(){ state.shareSent = true; },
-  closeShare(){ state.share = false; state.shareSent = false; },
+  share(){ doShare(); },
   cat(el){ state.form.cat = el.dataset.cat; },
   addIng(){ state.form.ingredients.push({ name:'', qty:'', unit:'' }); },
   rmIng(el){

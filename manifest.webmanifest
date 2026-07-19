@@ -1,6 +1,6 @@
 {
-  "name": "Niu's Kitchen",
-  "short_name": "Niu's Kitchen",
+  "name": "Bao's Kitchen",
+  "short_name": "Bao's Kitchen",
   "description": "Pick tonight's dishes and send the shopping list.",
   "start_url": "./",
   "scope": "./",

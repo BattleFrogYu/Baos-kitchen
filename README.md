@@ -1,4 +1,4 @@
-# Niu's Kitchen
+# Bao's Kitchen
 
 A little menu app — pick tonight's dishes, get a combined shopping list, send it over.
 
