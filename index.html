@@ -58,18 +58,14 @@ button{font-family:inherit}
   display:flex;align-items:center;justify-content:space-between;padding:18px 30px 0;
   font-family:-apple-system,system-ui,sans-serif;font-size:14px;font-weight:600;color:var(--color-text);
 }
-@media (max-width:460px){
-  body{background:var(--color-bg);align-items:stretch}
-  .phone{width:100%;height:100dvh;border-radius:0;padding:0}
-  .screen{border-radius:0}
-  .island{display:none}
-}
 
 /* ── App chrome ─────────────────────────────────────────────────────────── */
-.nk-scroll{scrollbar-width:none}
+/* `contain` stops a scroll that reaches the end of this box from being
+   handed to whatever is behind it — the rubber-band effect. */
+.nk-scroll{scrollbar-width:none;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .nk-scroll::-webkit-scrollbar{width:0;height:0}
 #header{flex:none;padding:56px 20px 0;background:var(--color-bg)}
-#scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#scroll{flex:1;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 #tabbar{flex:none;display:flex;border-top:2px solid var(--color-text);background:var(--color-bg);padding-bottom:26px}
 .rule{height:2px;background:var(--color-text);margin-top:14px}
 .muted{color:color-mix(in srgb,var(--color-text) 55%,transparent)}
@@ -133,6 +129,27 @@ button{font-family:inherit}
 @keyframes nkUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes nkFade{from{opacity:0}to{opacity:1}}
 @keyframes nkToast{0%{opacity:0;transform:translateY(10px)}12%{opacity:1;transform:translateY(0)}88%{opacity:1}100%{opacity:0}}
+
+/* ── Real phone ─────────────────────────────────────────────────────────
+   Must come last: these override #header / #tabbar, which have the same
+   specificity, so an earlier block would simply lose the cascade. */
+@media (max-width:460px){
+  /* Pin the document so only the list inside the app can scroll. Without
+     this iOS drags the whole page — 100vh is taller than the visible area
+     while the address bar shows, so there is always somewhere to go. */
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none;}
+  body{position:fixed;inset:0;width:100%;background:var(--color-bg);align-items:stretch;}
+  .phone{width:100%;height:100%;border-radius:0;padding:0}
+  .screen{border-radius:0}
+  /* The real status bar is right there — don't draw a second one. */
+  .island,.statusbar{display:none}
+  /* Clear the notch and the home indicator. */
+  #header{padding-top:max(18px,env(safe-area-inset-top))}
+  #tabbar{padding-bottom:max(10px,env(safe-area-inset-bottom))}
+  /* !important because these sheets carry inline padding, which would
+     otherwise win and leave their buttons under the home indicator. */
+  .sheet-safe{padding-bottom:max(22px,calc(env(safe-area-inset-bottom) + 14px))!important}
+}
 </style>
 </head>
 <body>
@@ -984,7 +1001,7 @@ function renderCats(){
 
   return `
   <div data-act="catsBackdrop" style="position:absolute;inset:0;z-index:36;background:rgba(32,30,29,.4);animation:nkFade .18s ease;">
-    <div data-stop class="nk-scroll" style="position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;background:var(--color-bg);animation:nkUp .28s cubic-bezier(.2,.8,.2,1);padding:22px 20px 30px;">
+    <div data-stop class="nk-scroll sheet-safe" style="position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;background:var(--color-bg);animation:nkUp .28s cubic-bezier(.2,.8,.2,1);padding:22px 20px 30px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
         <h2 style="font-size:26px;line-height:1;letter-spacing:-.025em;">Categories</h2>
         <button data-act="closeCats" style="border:0;background:none;cursor:pointer;color:var(--color-text);padding:2px;">${ICON.close(20)}</button>
@@ -1007,7 +1024,7 @@ function renderPair(){
   if(!state.pairOpen) return '';
   return `
   <div data-act="pairBackdrop" style="position:absolute;inset:0;z-index:36;background:rgba(32,30,29,.4);animation:nkFade .18s ease;">
-    <div data-stop class="nk-scroll" style="position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;background:var(--color-bg);animation:nkUp .28s cubic-bezier(.2,.8,.2,1);padding:22px 20px 30px;">
+    <div data-stop class="nk-scroll sheet-safe" style="position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;background:var(--color-bg);animation:nkUp .28s cubic-bezier(.2,.8,.2,1);padding:22px 20px 30px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
         <h2 style="font-size:26px;line-height:1;letter-spacing:-.025em;">Pair a phone</h2>
         <button data-act="closePair" style="border:0;background:none;cursor:pointer;color:var(--color-text);padding:2px;">${ICON.close(20)}</button>
@@ -1228,7 +1245,7 @@ function renderDetail(){
             <span style="font-family:var(--font-heading);font-weight:800;font-size:14px;color:color-mix(in srgb,var(--color-text) 65%,transparent);">${esc(qtyStr(i.q, i.u))}</span>
           </div>`).join('')}
       </div>
-      <div style="flex:none;padding:16px 20px 22px;border-top:2px solid var(--color-text);display:flex;gap:10px;">
+      <div class="sheet-safe" style="flex:none;padding:16px 20px 22px;border-top:2px solid var(--color-text);display:flex;gap:10px;">
         <button class="btn-outline" data-act="edit" style="flex:none;padding:15px 16px;">${ICON.pencil(15)} Edit</button>
         <button class="btn-accent btn-wide" data-act="detailAdd" style="flex:1;padding:15px 18px;">
           <span>${qty > 0 ? 'In order · ' + qty : 'Add to order'}</span>${ICON.plus(18)}
