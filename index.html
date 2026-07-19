@@ -142,14 +142,20 @@ button{font-family:inherit}
      this iOS drags the whole page — 100vh is taller than the visible area
      while the address bar shows, so there is always somewhere to go. */
   html,body{height:100%;overflow:hidden;overscroll-behavior:none;}
-  body{position:fixed;inset:0;width:100%;background:var(--color-bg);align-items:stretch;}
-  .phone{width:100%;height:100%;border-radius:0;padding:0}
-  .screen{border-radius:0}
+  body{display:block;background:var(--color-bg);}
+  /* The frame is itself fixed to the viewport rather than inheriting a chain
+     of percentage heights. A chain only resolves if every ancestor has a
+     definite height, and when it fails the column overflows the screen and
+     the tab bar ends up below the fold — half-visible and untappable. */
+  .phone{position:fixed;inset:0;width:auto;height:auto;border-radius:0;padding:0;box-shadow:none}
+  .screen{border-radius:0;height:100%}
   /* The real status bar is right there — don't draw a second one. */
   .island,.statusbar{display:none}
   /* Clear the notch and the home indicator. */
   #header{padding-top:max(18px,env(safe-area-inset-top))}
-  #tabbar{padding-bottom:max(10px,env(safe-area-inset-bottom))}
+  /* +6px so labels clear the home-indicator gesture zone with room to spare,
+     rather than ending 4px inside it as they did before. */
+  #tabbar{padding-bottom:max(12px,calc(env(safe-area-inset-bottom) + 6px))}
   /* !important because these sheets carry inline padding, which would
      otherwise win and leave their buttons under the home indicator. */
   .sheet-safe{padding-bottom:max(22px,calc(env(safe-area-inset-bottom) + 14px))!important}
@@ -231,6 +237,9 @@ const SEED_RECIPES = [
 const DEFAULT_CATS = ['Soup','Grill','Fresh','Rice','Curry','Sweet'];
 const GROUP_ORDER = ['Protein','Produce','Herbs & Aromatics','Pantry'];
 const STORE_KEY = 'nius-kitchen/v1';
+// Shown small on the Menu screen. If a phone reports an older build than the
+// one deployed, it is serving a stale cache rather than misbehaving.
+const BUILD = '2026-07-19-e';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    State
@@ -1038,6 +1047,7 @@ function renderMenu(){
         <button data-act="restore" class="linkbtn">Restore</button>
       </div>
       ${renderSyncRow()}
+      <div style="margin-top:8px;font-size:9px;letter-spacing:.06em;color:color-mix(in srgb,var(--color-text) 40%,transparent);">build ${esc(BUILD)}</div>
     </div>
   </div>`;
 }
