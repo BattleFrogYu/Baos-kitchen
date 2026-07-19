@@ -1171,7 +1171,10 @@ const ACTIONS = {
   },
   open(el){ state.detail = el.dataset.id; },
   closeDetail(){ state.detail = null; },
-  backdrop(el, ev){ if(ev.target === el) state.detail = null; },
+  backdrop(el, ev){
+    if(ev.target !== el) return false;   // tap inside the sheet — leave it alone
+    state.detail = null;
+  },
   add(el){
     const r = recipeById(el.dataset.id);
     setCart(r.id, 1);
@@ -1206,7 +1209,10 @@ const ACTIONS = {
   restore(){ backuppick.value = ''; backuppick.click(); },
   pair(){ state.pairOpen = true; },
   closePair(){ state.pairOpen = false; },
-  pairBackdrop(el, ev){ if(ev.target === el) state.pairOpen = false; },
+  pairBackdrop(el, ev){
+    if(ev.target !== el) return false;   // tap inside the sheet — leave it alone
+    state.pairOpen = false;
+  },
   copyCode(){
     if(navigator.clipboard) navigator.clipboard.writeText(household || '').catch(() => {});
     showToast('Code copied');
@@ -1215,6 +1221,12 @@ const ACTIONS = {
 };
 
 app.addEventListener('click', ev => {
+  // Never act on a tap that landed in a text field. Re-rendering would
+  // replace the element and drop focus, making it impossible to type — which
+  // is exactly what happened inside the pairing sheet, whose backdrop
+  // carries a data-act the input's clicks bubble up to.
+  if(ev.target.closest('input, textarea, select')) return;
+
   const slotEl = ev.target.closest('[data-slot]');
   const el = ev.target.closest('[data-act]');
 
@@ -1223,8 +1235,9 @@ app.addEventListener('click', ev => {
     if(fn){
       // showToast renders on its own; other actions render once here.
       const before = state.toast;
-      fn(el, ev);
-      if(state.toast === before) render();
+      // A handler returning false means "nothing changed" — skip the render.
+      const changed = fn(el, ev);
+      if(changed !== false && state.toast === before) render();
       return;
     }
   }
