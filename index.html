@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Niu's Kitchen</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#ec3013">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Niu's Kitchen">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+/* ── Modernist design-system tokens ─────────────────────────────────────── */
+:root{
+  --color-bg:#f3f2f2;
+  --color-surface:#eae9e9;
+  --color-text:#201e1d;
+  --color-accent:#ec3013;
+  --color-divider:color-mix(in srgb,#201e1d 40%,transparent);
+  --font-heading:"Archivo",system-ui,sans-serif;
+  --font-body:"Archivo",system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+body{
+  margin:0;background:#cbc8c4;color:var(--color-text);
+  font-family:var(--font-body);font-size:15px;line-height:1.55;
+  display:flex;align-items:center;justify-content:center;min-height:100vh;
+}
+h1,h2{font-family:var(--font-heading);font-weight:800;line-height:1.12;letter-spacing:-0.015em;margin:0}
+button{font-family:inherit}
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+
+/* ── iPhone frame ───────────────────────────────────────────────────────── */
+.phone{
+  position:relative;width:402px;height:874px;flex:none;
+  background:#0b0b0b;border-radius:56px;padding:11px;
+  box-shadow:0 30px 70px rgba(0,0,0,.35),0 0 0 1px rgba(255,255,255,.06) inset;
+}
+.screen{
+  position:relative;width:100%;height:100%;overflow:hidden;
+  border-radius:45px;background:var(--color-bg);
+  display:flex;flex-direction:column;
+}
+.island{
+  position:absolute;top:12px;left:50%;transform:translateX(-50%);
+  width:118px;height:34px;border-radius:19px;background:#0b0b0b;z-index:50;pointer-events:none;
+}
+.statusbar{
+  position:absolute;top:0;left:0;right:0;height:56px;z-index:49;pointer-events:none;
+  display:flex;align-items:center;justify-content:space-between;padding:18px 30px 0;
+  font-family:-apple-system,system-ui,sans-serif;font-size:14px;font-weight:600;color:var(--color-text);
+}
+.statusbar.on-white{color:#000}
+@media (max-width:460px){
+  body{background:var(--color-bg);align-items:stretch}
+  .phone{width:100%;height:100dvh;border-radius:0;padding:0}
+  .screen{border-radius:0}
+  .island{display:none}
+}
+
+/* ── App chrome ─────────────────────────────────────────────────────────── */
+.nk-scroll{scrollbar-width:none}
+.nk-scroll::-webkit-scrollbar{width:0;height:0}
+#header{flex:none;padding:56px 20px 0;background:var(--color-bg)}
+#scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#tabbar{flex:none;display:flex;border-top:2px solid var(--color-text);background:var(--color-bg);padding-bottom:26px}
+.rule{height:2px;background:var(--color-text);margin-top:14px}
+.muted{color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.btn-accent{
+  display:inline-flex;align-items:center;gap:8px;background:var(--color-accent);color:#fff;border:0;
+  padding:12px 16px;font-family:var(--font-heading);font-weight:800;font-size:13px;
+  letter-spacing:.05em;text-transform:uppercase;cursor:pointer;
+}
+.btn-outline{
+  display:inline-flex;align-items:center;gap:8px;background:none;border:2px solid var(--color-text);
+  color:var(--color-text);padding:11px 16px;font-family:var(--font-heading);font-weight:800;
+  font-size:13px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;
+}
+.btn-wide{width:100%;display:flex;align-items:center;justify-content:space-between;padding:16px 18px;font-size:15px;letter-spacing:.04em}
+.step{
+  border:2px solid var(--color-text);background:var(--color-bg);color:var(--color-text);
+  font-weight:800;cursor:pointer;line-height:1;
+}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;background:none;border:0;padding:12px 0 4px;cursor:pointer}
+.tab span{font-family:var(--font-heading);font-weight:800;font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+.chip{
+  flex:none;border:1.5px solid var(--color-divider);padding:3px 7px;font-size:10px;font-weight:800;
+  text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;
+}
+.label{
+  display:block;font-family:var(--font-heading);font-weight:800;font-size:11px;letter-spacing:.1em;
+  text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 60%,transparent);margin-bottom:7px;
+}
+.nk-in{
+  font-family:var(--font-body);background:var(--color-bg);color:var(--color-text);outline:none;
+  border:2px solid var(--color-divider);padding:11px 10px;font-size:15px;font-weight:600;
+}
+.nk-in:focus{border-color:var(--color-accent)}
+.nk-in-lg{width:100%;border:2px solid var(--color-text);padding:13px 14px;font-size:16px}
+
+/* ── Image slot ─────────────────────────────────────────────────────────── */
+.slot{
+  position:relative;width:100%;height:100%;background:var(--color-surface);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;
+}
+.slot img{width:100%;height:100%;object-fit:cover;display:block}
+.slot .hint{
+  font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;text-align:center;padding:0 12px;
+  color:color-mix(in srgb,var(--color-text) 38%,transparent);
+}
+.slot.drag{outline:2px dashed var(--color-accent);outline-offset:-4px}
+.linkbtn{
+  background:none;border:0;cursor:pointer;padding:2px 0;
+  font-family:var(--font-heading);font-weight:800;font-size:11px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--color-accent);
+}
+.slot .clear{
+  position:absolute;top:6px;right:6px;width:26px;height:26px;border:0;cursor:pointer;
+  background:rgba(32,30,29,.72);color:#fff;display:none;align-items:center;justify-content:center;
+}
+.slot:hover .clear.on{display:flex}
+
+/* ── Animations ─────────────────────────────────────────────────────────── */
+@keyframes nkUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes nkFade{from{opacity:0}to{opacity:1}}
+@keyframes nkToast{0%{opacity:0;transform:translateY(10px)}12%{opacity:1;transform:translateY(0)}88%{opacity:1}100%{opacity:0}}
+</style>
+</head>
+<body>
+
+<div class="phone">
+  <div class="screen" id="app">
+    <div class="statusbar" id="statusbar"><span id="clock">9:41</span><span>􀙇 􀛨</span></div>
+    <div class="island"></div>
+    <div id="header"></div>
+    <div id="scroll" class="nk-scroll"></div>
+    <div id="tabbar"></div>
+    <div id="overlays"></div>
+  </div>
+</div>
+<input type="file" id="filepick" accept="image/*" hidden>
+<input type="file" id="backuppick" accept="application/json,.json" hidden>
+
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Seed data
+   ═══════════════════════════════════════════════════════════════════════ */
+const SEED_RECIPES = [
+  { id:'pho', name:'Phở Bò', en:'Beef noodle soup', cat:'Soup', time:60, ing:[
+    {n:'Beef brisket',   q:500, u:'g',    g:'Protein'},
+    {n:'Rice noodles',   q:400, u:'g',    g:'Pantry'},
+    {n:'Yellow onion',   q:1,   u:'',     g:'Produce'},
+    {n:'Ginger',         q:1,   u:'knob', g:'Herbs & Aromatics'},
+    {n:'Star anise',     q:3,   u:'',     g:'Pantry'},
+    {n:'Fish sauce',     q:3,   u:'tbsp', g:'Pantry'},
+    {n:'Cilantro',       q:1,   u:'bunch',g:'Herbs & Aromatics'},
+  ]},
+  { id:'buncha', name:'Bún Chả', en:'Grilled pork & noodles', cat:'Grill', time:45, ing:[
+    {n:'Pork belly',      q:400, u:'g',     g:'Protein'},
+    {n:'Rice vermicelli', q:300, u:'g',     g:'Pantry'},
+    {n:'Fish sauce',      q:4,   u:'tbsp',  g:'Pantry'},
+    {n:'Garlic',          q:4,   u:'cloves',g:'Herbs & Aromatics'},
+    {n:'Lime',            q:2,   u:'',      g:'Produce'},
+    {n:'Lettuce',         q:1,   u:'head',  g:'Produce'},
+  ]},
+  { id:'goicuon', name:'Gỏi Cuốn', en:'Fresh spring rolls', cat:'Fresh', time:30, ing:[
+    {n:'Shrimp',          q:200, u:'g',     g:'Protein'},
+    {n:'Pork loin',       q:150, u:'g',     g:'Protein'},
+    {n:'Rice paper',      q:12,  u:'sheets',g:'Pantry'},
+    {n:'Rice vermicelli', q:100, u:'g',     g:'Pantry'},
+    {n:'Mint',            q:1,   u:'bunch', g:'Herbs & Aromatics'},
+    {n:'Lettuce',         q:1,   u:'head',  g:'Produce'},
+  ]},
+  { id:'comtam', name:'Cơm Tấm', en:'Broken rice & pork chop', cat:'Rice', time:40, ing:[
+    {n:'Pork chop',   q:2,   u:'',    g:'Protein'},
+    {n:'Broken rice', q:300, u:'g',   g:'Pantry'},
+    {n:'Fish sauce',  q:2,   u:'tbsp',g:'Pantry'},
+    {n:'Cucumber',    q:1,   u:'',    g:'Produce'},
+    {n:'Tomato',      q:2,   u:'',    g:'Produce'},
+  ]},
+  { id:'cari', name:'Cà Ri Gà', en:'Chicken coconut curry', cat:'Curry', time:55, ing:[
+    {n:'Chicken thighs',q:600, u:'g',      g:'Protein'},
+    {n:'Coconut milk',  q:400, u:'ml',     g:'Pantry'},
+    {n:'Potato',        q:3,   u:'',       g:'Produce'},
+    {n:'Carrot',        q:2,   u:'',       g:'Produce'},
+    {n:'Curry powder',  q:2,   u:'tbsp',   g:'Pantry'},
+    {n:'Lemongrass',    q:2,   u:'stalks', g:'Herbs & Aromatics'},
+  ]},
+  { id:'banhxeo', name:'Bánh Xèo', en:'Sizzling crêpe', cat:'Grill', time:40, ing:[
+    {n:'Shrimp',       q:200, u:'g',  g:'Protein'},
+    {n:'Pork belly',   q:150, u:'g',  g:'Protein'},
+    {n:'Rice flour',   q:200, u:'g',  g:'Pantry'},
+    {n:'Coconut milk', q:200, u:'ml', g:'Pantry'},
+    {n:'Bean sprouts', q:200, u:'g',  g:'Produce'},
+    {n:'Turmeric',     q:1,   u:'tsp',g:'Pantry'},
+  ]},
+];
+
+const CATS = ['Soup','Grill','Fresh','Rice','Curry','Sweet'];
+const GROUP_ORDER = ['Protein','Produce','Herbs & Aromatics','Pantry'];
+const STORE_KEY = 'nius-kitchen/v1';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   State
+   ═══════════════════════════════════════════════════════════════════════ */
+const state = {
+  screen: 'menu',
+  cart: {},        // recipe id -> batch count
+  checked: {},     // ingredient key -> true
+  detail: null,    // recipe id
+  share: false,
+  shareSent: false,
+  toast: null,
+  recipes: SEED_RECIPES,
+  photos: {},      // slot id -> data URL
+  editing: null,   // recipe id being edited, or null when adding a new dish
+  confirmDelete: false,
+  form: { name:'', en:'', cat:'Soup', time:'', ingredients:[{name:'',qty:'',unit:''}] },
+};
+
+const blankForm = () => ({ name:'', en:'', cat:'Soup', time:'', ingredients:[{ name:'', qty:'', unit:'' }] });
+function resetForm(){
+  state.form = blankForm();
+  state.editing = null;
+  state.confirmDelete = false;
+}
+
+/* Recipes, cart and check-offs live in localStorage — small and synchronous.
+   Photos live in IndexedDB: base64 images blow localStorage's ~5MB cap after
+   a dozen or so dishes, and it fails silently when it does. */
+function save(){
+  try{
+    localStorage.setItem(STORE_KEY, JSON.stringify({
+      v:2, cart:state.cart, checked:state.checked, recipes:state.recipes,
+    }));
+  }catch(e){ showToast('Could not save — storage full'); }
+}
+
+const DB_NAME = 'nius-kitchen', PHOTO_STORE = 'photos';
+let _dbp;
+function db(){
+  if(!_dbp) _dbp = new Promise((res, rej) => {
+    const rq = indexedDB.open(DB_NAME, 1);
+    rq.onupgradeneeded = () => rq.result.createObjectStore(PHOTO_STORE);
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror   = () => rej(rq.error);
+  });
+  return _dbp;
+}
+function photoTx(mode, fn){
+  return db().then(d => new Promise((res, rej) => {
+    const t = d.transaction(PHOTO_STORE, mode);
+    fn(t.objectStore(PHOTO_STORE));
+    t.oncomplete = () => res();
+    t.onerror    = () => rej(t.error);
+  }));
+}
+const photoPut = (k, v) => photoTx('readwrite', s => s.put(v, k));
+const photoDel = k      => photoTx('readwrite', s => s.delete(k));
+function photoAll(){
+  return db().then(d => new Promise((res, rej) => {
+    const out = {};
+    const c = d.transaction(PHOTO_STORE, 'readonly').objectStore(PHOTO_STORE).openCursor();
+    c.onsuccess = e => {
+      const cur = e.target.result;
+      if(cur){ out[cur.key] = cur.value; cur.continue(); } else res(out);
+    };
+    c.onerror = () => rej(c.error);
+  }));
+}
+
+function setPhoto(id, dataUrl){
+  state.photos[id] = dataUrl;
+  photoPut(id, dataUrl).catch(() => showToast('Could not save that photo'));
+}
+function dropPhoto(id){
+  delete state.photos[id];
+  photoDel(id).catch(() => {});
+}
+
+function load(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(!raw) return;
+    const d = JSON.parse(raw);
+    if(d.cart)    state.cart    = d.cart;
+    if(d.checked) state.checked = d.checked;
+    if(Array.isArray(d.recipes) && d.recipes.length) state.recipes = d.recipes;
+    // v1 stored photos in localStorage — move them to IndexedDB, then reclaim.
+    if(d.photos && Object.keys(d.photos).length){
+      state.photos = d.photos;
+      Promise.all(Object.entries(d.photos).map(([k, v]) => photoPut(k, v)))
+        .then(save).catch(() => {});
+    }
+  }catch(e){ /* corrupt store — fall back to seed data */ }
+}
+
+/* ── Backup / restore ───────────────────────────────────────────────────
+   The only way to move a menu between phones, and the only real safety net:
+   browser storage is per-device and vanishes with the app. */
+function exportBackup(){
+  const payload = {
+    app:'nius-kitchen', version:2, exported:new Date().toISOString(),
+    recipes:state.recipes, cart:state.cart, checked:state.checked, photos:state.photos,
+  };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type:'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'nius-kitchen-' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+  showToast('Backup saved');
+}
+
+function importBackup(file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    let d;
+    try{ d = JSON.parse(reader.result); }
+    catch(e){ showToast('That file is not a backup'); return; }
+    if(!d || !Array.isArray(d.recipes) || !d.recipes.length){
+      showToast('That file is not a backup'); return;
+    }
+    if(!confirm('Replace the current menu, order and photos with this backup?')) return;
+
+    state.recipes = d.recipes;
+    state.cart    = d.cart    || {};
+    state.checked = d.checked || {};
+    state.photos  = d.photos  || {};
+    Promise.all(Object.entries(state.photos).map(([k, v]) => photoPut(k, v))).catch(() => {});
+
+    resetForm();
+    state.screen = 'menu';
+    state.detail = null;
+    save();
+    showToast('Backup restored');
+  };
+  reader.readAsText(file);
+}
+
+// Work on a copy: the menu is editable now, and mutating SEED_RECIPES in place
+// would mean a "reset to defaults" could never get the originals back.
+state.recipes = JSON.parse(JSON.stringify(SEED_RECIPES));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Helpers
+   ═══════════════════════════════════════════════════════════════════════ */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const fmt = n => String(Math.round(n*100)/100);
+const qtyStr = (q,u) => (!q && q!==0) ? (u||'') : (u ? `${fmt(q)} ${u}` : fmt(q));
+
+const recipeById = id => state.recipes.find(r => r.id === id);
+
+let toastTimer;
+function showToast(msg){
+  state.toast = msg;
+  render();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { state.toast = null; render(); }, 2100);
+}
+
+function setCart(id, val){
+  if(val <= 0) delete state.cart[id];
+  else state.cart[id] = val;
+  save();
+}
+
+/** Aggregate every ordered recipe's ingredients into one grouped shopping list. */
+function buildGroups(){
+  const agg = {};
+  Object.keys(state.cart).forEach(id => {
+    const r = recipeById(id);
+    if(!r) return;
+    const batches = state.cart[id];
+    r.ing.forEach(i => {
+      const key = (i.n + '|' + i.u).toLowerCase();
+      if(!agg[key]) agg[key] = { name:i.n, unit:i.u, qty:0, group:i.g || 'Pantry' };
+      agg[key].qty += (i.q || 0) * batches;
+    });
+  });
+
+  const byGroup = {};
+  Object.keys(agg).forEach(key => {
+    const it = agg[key];
+    (byGroup[it.group] = byGroup[it.group] || []).push({ ...it, key });
+  });
+
+  const groups = [];
+  GROUP_ORDER.forEach(g => {
+    if(!byGroup[g]) return;
+    byGroup[g].sort((a,b) => a.name.localeCompare(b.name));
+    groups.push({
+      group: g,
+      items: byGroup[g].map(it => ({
+        key: it.key,
+        name: it.name,
+        qty: qtyStr(it.qty, it.unit),
+        done: !!state.checked[it.key],
+      })),
+    });
+  });
+  return { groups, count: Object.keys(agg).length };
+}
+
+/** Guess a shopping-list aisle for a hand-entered ingredient.
+ *  Aromatics are tested before produce on purpose: "lemongrass" would
+ *  otherwise match `lemon` and land in Produce, while the seed recipes file it
+ *  under Herbs & Aromatics — the same ingredient would then split into two
+ *  separate shopping-list rows instead of adding up. Same for garlic. */
+function guessGroup(name){
+  if(/chicken|beef|pork|shrimp|fish|egg|tofu|meat|lamb/i.test(name)) return 'Protein';
+  if(/mint|cilantro|basil|ginger|lemongrass|herb|scallion|garlic|shallot|chive/i.test(name)) return 'Herbs & Aromatics';
+  if(/onion|tomato|potato|carrot|cucumber|lettuce|lime|lemon|pepper|veg|mushroom|sprout/i.test(name)) return 'Produce';
+  return 'Pantry';
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Markup fragments
+   ═══════════════════════════════════════════════════════════════════════ */
+const ICON = {
+  plus:  w => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  close: w => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+  send:  w => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>`,
+  menu:  `<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h0a2 2 0 0 0 2-2V2M5 2v20M15 2c-1.5 0-3 1.5-3 5s1.5 5 3 5v10"/></svg>`,
+  order: `<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1.5L8 22l2-1.5L12 22l2-1.5L16 22l2-1.5L20 22V2l-2 1.5L16 2l-2 1.5L12 2l-2 1.5L8 2 6 3.5 4 2zM8 8h8M8 12h8"/></svg>`,
+  list:  `<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>`,
+  add:   `<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18"/><path d="M12 8v8M8 12h8"/></svg>`,
+  pencil: w => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>`,
+  check: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+};
+
+/** A user-fillable photo slot: click to browse, or drag an image onto it. */
+function slot(id, placeholder){
+  const src = state.photos[id];
+  return `<div class="slot" data-slot="${esc(id)}">
+    ${src
+      ? `<img src="${esc(src)}" alt="">
+         <button class="clear on" data-act="clearPhoto" data-id="${esc(id)}" title="Remove photo">${ICON.close(14)}</button>`
+      : `<span class="hint">${esc(placeholder || '')}</span>`}
+  </div>`;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+const TITLES = {
+  menu:  ['Menu',          "Pick tonight's dishes, Niu."],
+  order: ['Your Order',    'Adjust portions, then send.'],
+  list:  ['Shopping List', 'For Bao to buy.'],
+  add:   ['New Dish',      'Add it to the menu.'],
+};
+
+function renderHeader(){
+  let [title, sub] = TITLES[state.screen] || TITLES.menu;
+  if(state.screen === 'add' && state.editing){
+    title = 'Edit Dish';
+    sub = 'Change it, or take it off the menu.';
+  }
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:9px;">
+        <div style="width:20px;height:20px;background:var(--color-accent);"></div>
+        <span style="font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.14em;text-transform:uppercase;">Niu's Kitchen</span>
+      </div>
+      ${state.screen === 'add' ? `
+        <button data-act="go" data-screen="menu" style="border:0;background:none;font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-accent);cursor:pointer;padding:6px 0;">Cancel</button>
+      ` : ''}
+    </div>
+    <div style="margin-top:14px;">
+      <h1 style="font-size:38px;line-height:.98;letter-spacing:-.03em;">${esc(title)}</h1>
+      <div class="muted" style="margin-top:6px;font-size:13px;">${esc(sub)}</div>
+    </div>
+    <div class="rule"></div>`;
+}
+
+/* ── Menu screen ────────────────────────────────────────────────────────── */
+function renderMenu(){
+  const cards = state.recipes.map(r => {
+    const qty = state.cart[r.id] || 0;
+    return `
+      <div style="border-bottom:2px solid var(--color-divider);padding:18px 20px 22px;">
+        <div style="position:relative;width:100%;height:172px;background:var(--color-surface);margin-bottom:14px;">
+          ${slot('photo-' + r.id, 'Drop dish photo')}
+        </div>
+        <div data-act="open" data-id="${esc(r.id)}" style="cursor:pointer;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+            <div style="font-family:var(--font-heading);font-weight:800;font-size:22px;line-height:1.04;letter-spacing:-.02em;">${esc(r.name)}</div>
+            <span class="chip">${esc(r.cat)}</span>
+          </div>
+          <div class="muted" style="margin-top:5px;font-size:13px;">${esc(r.en)}</div>
+          <div style="margin-top:8px;font-size:12px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 62%,transparent);">${r.time} min · ${r.ing.length} ingredients</div>
+        </div>
+        <div style="margin-top:14px;">
+          ${qty > 0 ? `
+            <div style="display:flex;align-items:center;gap:10px;">
+              <button class="step" data-act="dec" data-id="${esc(r.id)}" style="width:42px;height:42px;font-size:22px;">−</button>
+              <div style="min-width:34px;text-align:center;font-family:var(--font-heading);font-weight:800;font-size:20px;">${qty}</div>
+              <button class="step" data-act="inc" data-id="${esc(r.id)}" style="width:42px;height:42px;font-size:22px;">+</button>
+              <span style="margin-left:6px;font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-accent);">In order</span>
+            </div>
+          ` : `
+            <button class="btn-accent" data-act="add" data-id="${esc(r.id)}">${ICON.plus(15)} Add to order</button>
+          `}
+        </div>
+      </div>`;
+  }).join('');
+
+  return `<div>${cards}
+    <div style="padding:26px 20px 34px;text-align:center;">
+      <div style="font-size:12px;letter-spacing:.04em;color:color-mix(in srgb,var(--color-text) 45%,transparent);">Want something not here?</div>
+      <button class="btn-outline" data-act="go" data-screen="add" style="margin-top:10px;">${ICON.plus(15)} Add a new dish</button>
+      <div style="margin-top:26px;padding-top:18px;border-top:1px solid var(--color-divider);display:flex;align-items:center;justify-content:center;gap:10px;">
+        <button data-act="backup" class="linkbtn">Back up menu</button>
+        <span style="color:color-mix(in srgb,var(--color-text) 30%,transparent);">·</span>
+        <button data-act="restore" class="linkbtn">Restore</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ── Order screen ───────────────────────────────────────────────────────── */
+function renderOrder(){
+  const ids = Object.keys(state.cart);
+
+  if(ids.length === 0){
+    return `<div style="padding:70px 34px;text-align:center;">
+      <div style="font-family:var(--font-heading);font-weight:800;font-size:22px;letter-spacing:-.02em;">No dishes yet</div>
+      <p class="muted" style="margin-top:8px;font-size:14px;">Head to the menu and pick what you'd like to eat, Niu.</p>
+      <button class="btn-accent" data-act="go" data-screen="menu" style="margin-top:16px;">Browse the menu</button>
+    </div>`;
+  }
+
+  const { count: ingCount } = buildGroups();
+
+  const rows = ids.map(id => {
+    const r = recipeById(id);
+    const qty = state.cart[id];
+    return `
+      <div style="border-bottom:2px solid var(--color-divider);padding:16px 20px;display:flex;align-items:center;gap:14px;">
+        <div style="width:66px;height:66px;flex:none;background:var(--color-surface);">${slot('photo-' + id, '')}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:17px;letter-spacing:-.01em;line-height:1.05;">${esc(r.name)}</div>
+          <div class="muted" style="margin-top:3px;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;">${qty > 1 ? qty + ' batches' : '1 batch'}</div>
+          <div style="margin-top:9px;display:flex;align-items:center;gap:8px;">
+            <button class="step" data-act="dec" data-id="${esc(id)}" style="width:32px;height:32px;font-size:18px;">−</button>
+            <div style="min-width:22px;text-align:center;font-family:var(--font-heading);font-weight:800;font-size:16px;">${qty}</div>
+            <button class="step" data-act="inc" data-id="${esc(id)}" style="width:32px;height:32px;font-size:18px;">+</button>
+          </div>
+        </div>
+        <button data-act="remove" data-id="${esc(id)}" title="Remove" style="align-self:flex-start;border:0;background:none;cursor:pointer;padding:4px;color:color-mix(in srgb,var(--color-text) 45%,transparent);">${ICON.close(18)}</button>
+      </div>`;
+  }).join('');
+
+  return `<div>${rows}
+    <div style="padding:20px;">
+      <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 60%,transparent);">
+        <span>${ids.length}${ids.length === 1 ? ' dish' : ' dishes'}</span><span>${ingCount} ingredients</span>
+      </div>
+      <button class="btn-accent btn-wide" data-act="share" style="margin-top:16px;"><span>Send order to Bao</span>${ICON.send(20)}</button>
+      <button class="btn-outline" data-act="go" data-screen="list" style="margin-top:10px;width:100%;padding:14px 18px;text-align:left;display:block;">View shopping list</button>
+    </div>
+  </div>`;
+}
+
+/* ── Shopping-list screen ───────────────────────────────────────────────── */
+function renderList(){
+  if(Object.keys(state.cart).length === 0){
+    return `<div style="padding:70px 34px;text-align:center;">
+      <div style="font-family:var(--font-heading);font-weight:800;font-size:22px;letter-spacing:-.02em;">Nothing to buy yet</div>
+      <p class="muted" style="margin-top:8px;font-size:14px;">Once Niu orders dishes, every ingredient shows up here — added together.</p>
+    </div>`;
+  }
+
+  const { groups } = buildGroups();
+  const left = groups.reduce((n,g) => n + g.items.filter(i => !i.done).length, 0);
+
+  const body = groups.map(g => `
+    <div>
+      <div style="padding:16px 20px 6px;font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--color-accent);">${esc(g.group)}</div>
+      ${g.items.map(it => `
+        <button data-act="toggle" data-key="${esc(it.key)}" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--color-divider);padding:13px 20px;display:flex;align-items:center;gap:14px;cursor:pointer;">
+          <span style="width:22px;height:22px;flex:none;border:2px solid var(--color-text);display:flex;align-items:center;justify-content:center;background:${it.done ? 'var(--color-text)' : 'transparent'};">
+            <span style="display:flex;opacity:${it.done ? 1 : 0};">${ICON.check}</span>
+          </span>
+          <span style="flex:1;font-size:15.5px;font-weight:600;letter-spacing:-.01em;text-decoration:${it.done ? 'line-through' : 'none'};color:${it.done ? 'color-mix(in srgb,var(--color-text) 40%,transparent)' : 'var(--color-text)'};">${esc(it.name)}</span>
+          <span style="font-family:var(--font-heading);font-weight:800;font-size:14px;text-decoration:${it.done ? 'line-through' : 'none'};color:color-mix(in srgb,var(--color-text) ${it.done ? 35 : 65}%,transparent);">${esc(it.qty)}</span>
+        </button>`).join('')}
+    </div>`).join('');
+
+  return `<div>
+    <div style="padding:14px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--color-divider);">
+      <span style="font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 60%,transparent);">${left === 0 ? 'All bought ✓' : left + ' left to buy'}</span>
+      <button data-act="reset" style="border:0;background:none;font-family:var(--font-heading);font-weight:800;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--color-accent);cursor:pointer;">Reset</button>
+    </div>
+    ${body}
+    <div style="padding:20px;">
+      <button class="btn-accent btn-wide" data-act="share"><span>Share list with Bao</span>${ICON.send(20)}</button>
+    </div>
+  </div>`;
+}
+
+/* ── Add-a-dish screen ──────────────────────────────────────────────────── */
+function renderAdd(){
+  const f = state.form;
+
+  const cats = CATS.map(c => {
+    const on = f.cat === c;
+    return `<button data-act="cat" data-cat="${esc(c)}" style="border:2px solid var(--color-text);background:${on ? 'var(--color-text)' : 'transparent'};color:${on ? 'var(--color-bg)' : 'var(--color-text)'};padding:8px 12px;font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;">${esc(c)}</button>`;
+  }).join('');
+
+  const rows = f.ingredients.map((ing, i) => `
+    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+      <input class="nk-in" data-inp="ing" data-i="${i}" data-f="qty"  value="${esc(ing.qty)}"  placeholder="1" inputmode="decimal" style="width:52px;padding:11px 8px;font-weight:700;text-align:center;">
+      <input class="nk-in" data-inp="ing" data-i="${i}" data-f="unit" value="${esc(ing.unit)}" placeholder="g" style="width:60px;padding:11px 8px;text-align:center;">
+      <input class="nk-in" data-inp="ing" data-i="${i}" data-f="name" value="${esc(ing.name)}" placeholder="ingredient" style="flex:1;min-width:0;">
+      <button data-act="rmIng" data-i="${i}" style="width:34px;height:34px;flex:none;border:0;background:none;cursor:pointer;color:color-mix(in srgb,var(--color-text) 45%,transparent);">${ICON.close(18)}</button>
+    </div>`).join('');
+
+  const editing = !!state.editing;
+
+  return `<div style="padding:18px 20px 40px;">
+    <div style="position:relative;width:100%;height:190px;background:var(--color-surface);">
+      ${slot(editing ? 'photo-' + state.editing : 'new-dish-photo', 'Drop a photo of the dish')}
+    </div>
+
+    <div style="margin-top:22px;">
+      <label class="label">Dish name</label>
+      <input class="nk-in nk-in-lg" data-inp="name" value="${esc(f.name)}" placeholder="e.g. Bún Bò Huế">
+    </div>
+
+    <div style="margin-top:18px;display:flex;gap:10px;">
+      <div style="flex:1;min-width:0;">
+        <label class="label">Description</label>
+        <input class="nk-in" data-inp="en" value="${esc(f.en)}" placeholder="Spicy beef noodle soup" style="width:100%;">
+      </div>
+      <div style="width:96px;flex:none;">
+        <label class="label">Minutes</label>
+        <input class="nk-in" data-inp="time" value="${esc(f.time)}" placeholder="40" inputmode="numeric" style="width:100%;text-align:center;">
+      </div>
+    </div>
+
+    <div style="margin-top:18px;">
+      <label class="label">Category</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">${cats}</div>
+    </div>
+
+    <div style="margin-top:22px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <label class="label" style="margin-bottom:0;">Ingredients</label>
+        <span style="font-size:11px;color:color-mix(in srgb,var(--color-text) 45%,transparent);">amount · unit · item</span>
+      </div>
+      ${rows}
+      <button data-act="addIng" style="margin-top:4px;display:inline-flex;align-items:center;gap:7px;background:none;border:0;font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--color-accent);cursor:pointer;">${ICON.plus(14)} Add ingredient</button>
+    </div>
+
+    <button class="btn-accent" data-act="save" style="margin-top:26px;width:100%;padding:16px 18px;font-size:15px;letter-spacing:.04em;display:block;text-align:left;">${editing ? 'Save changes' : 'Save to menu'}</button>
+
+    ${editing ? `
+      <button data-act="removeDish" style="margin-top:10px;width:100%;background:none;border:2px solid ${state.confirmDelete ? 'var(--color-accent)' : 'var(--color-divider)'};color:${state.confirmDelete ? 'var(--color-accent)' : 'color-mix(in srgb,var(--color-text) 55%,transparent)'};padding:14px 18px;font-family:var(--font-heading);font-weight:800;font-size:13px;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;text-align:left;">
+        ${state.confirmDelete ? 'Tap again to remove' : 'Remove from menu'}
+      </button>
+    ` : ''}
+  </div>`;
+}
+
+/* ── Tab bar ────────────────────────────────────────────────────────────── */
+function renderTabs(){
+  const ids = Object.keys(state.cart);
+  const accent = 'var(--color-accent)';
+  const muted  = 'color-mix(in srgb,var(--color-text) 42%,transparent)';
+  const tab = (key, icon, label, badge) => `
+    <button class="tab" data-act="go" data-screen="${key}" style="color:${state.screen === key ? accent : muted};">
+      <div style="position:relative;">${icon}${badge || ''}</div>
+      <span>${label}</span>
+    </button>`;
+
+  const badge = ids.length > 0
+    ? `<span style="position:absolute;top:-6px;right:-9px;min-width:17px;height:17px;padding:0 4px;background:var(--color-accent);color:#fff;font-family:var(--font-heading);font-weight:800;font-size:10px;display:flex;align-items:center;justify-content:center;line-height:1;">${ids.length}</span>`
+    : '';
+
+  return tab('menu', ICON.menu, 'Menu')
+       + tab('order', ICON.order, 'Order', badge)
+       + tab('list', ICON.list, 'List')
+       + tab('add', ICON.add, 'Add');
+}
+
+/* ── Dish detail sheet ──────────────────────────────────────────────────── */
+function renderDetail(){
+  const d = state.detail ? recipeById(state.detail) : null;
+  if(!d) return '';
+  const qty = state.cart[d.id] || 0;
+
+  return `
+  <div data-act="backdrop" style="position:absolute;inset:0;z-index:30;background:rgba(32,30,29,.4);animation:nkFade .18s ease;">
+    <div data-stop style="position:absolute;left:0;right:0;bottom:0;max-height:88%;background:var(--color-bg);animation:nkUp .28s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;">
+      <div style="position:relative;width:100%;height:210px;background:var(--color-surface);flex:none;">
+        ${slot('photo-' + d.id, 'Drop dish photo')}
+        <button data-act="closeDetail" style="position:absolute;top:12px;right:12px;width:38px;height:38px;background:var(--color-bg);border:2px solid var(--color-text);color:var(--color-text);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2;">${ICON.close(18)}</button>
+      </div>
+      <div class="nk-scroll" style="flex:1;overflow-y:auto;padding:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+          <h2 style="font-size:28px;line-height:1;letter-spacing:-.025em;">${esc(d.name)}</h2>
+          <span class="chip">${esc(d.cat)}</span>
+        </div>
+        <div class="muted" style="margin-top:5px;font-size:14px;">${esc(d.en)} · ${d.time} min</div>
+        <div class="rule" style="margin:16px 0;"></div>
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--color-accent);margin-bottom:6px;">Ingredients</div>
+        ${d.ing.map(i => `
+          <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--color-divider);">
+            <span style="font-size:15px;font-weight:600;">${esc(i.n)}</span>
+            <span style="font-family:var(--font-heading);font-weight:800;font-size:14px;color:color-mix(in srgb,var(--color-text) 65%,transparent);">${esc(qtyStr(i.q, i.u))}</span>
+          </div>`).join('')}
+      </div>
+      <div style="flex:none;padding:16px 20px 22px;border-top:2px solid var(--color-text);display:flex;gap:10px;">
+        <button class="btn-outline" data-act="edit" style="flex:none;padding:15px 16px;">${ICON.pencil(15)} Edit</button>
+        <button class="btn-accent btn-wide" data-act="detailAdd" style="flex:1;padding:15px 18px;">
+          <span>${qty > 0 ? 'In order · ' + qty : 'Add to order'}</span>${ICON.plus(18)}
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ── iMessage share sheet ───────────────────────────────────────────────── */
+function renderShare(){
+  if(!state.share) return '';
+  const { groups, count: ingCount } = buildGroups();
+
+  const dishes = Object.keys(state.cart).map(id => `
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:14px;">
+      <span style="font-weight:600;color:var(--color-text);">${esc(recipeById(id).name)}</span>
+      <span style="font-family:var(--font-heading);font-weight:800;color:var(--color-text);">×${state.cart[id]}</span>
+    </div>`).join('');
+
+  const buy = groups.map(g => `
+    <div style="margin-bottom:4px;">
+      <div style="font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 45%,transparent);">${esc(g.group)}</div>
+      ${g.items.map(it => `
+        <div style="display:flex;justify-content:space-between;gap:10px;font-size:13.5px;padding:1px 0;">
+          <span style="color:var(--color-text);">${esc(it.name)}</span>
+          <span style="font-weight:700;color:color-mix(in srgb,var(--color-text) 65%,transparent);">${esc(it.qty)}</span>
+        </div>`).join('')}
+    </div>`).join('');
+
+  return `
+  <div style="position:absolute;inset:0;z-index:35;background:#fff;display:flex;flex-direction:column;animation:nkUp .3s cubic-bezier(.2,.8,.2,1);">
+    <div style="flex:none;padding:54px 12px 10px;border-bottom:.5px solid rgba(0,0,0,.15);background:rgba(249,249,249,.94);backdrop-filter:blur(12px);">
+      <div style="display:flex;align-items:center;">
+        <button data-act="closeShare" style="border:0;background:none;cursor:pointer;display:flex;align-items:center;padding:6px;">
+          <svg width="12" height="20" viewBox="0 0 12 20" fill="none"><path d="M10 2 2 10l8 8" stroke="#0a84ff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;">
+          <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(#b7b3ae,#8a8681);display:flex;align-items:center;justify-content:center;color:#fff;font-family:-apple-system,system-ui;font-weight:600;font-size:19px;">B</div>
+          <div style="margin-top:3px;font-family:-apple-system,system-ui;font-size:12px;color:#000;display:flex;align-items:center;gap:3px;">Bao <span>❤️</span></div>
+        </div>
+        <div style="width:40px;"></div>
+      </div>
+    </div>
+
+    <div class="nk-scroll" style="flex:1;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:8px;background:#fff;">
+      <div style="text-align:center;font-family:-apple-system,system-ui;font-size:11px;color:#8e8e93;margin-bottom:4px;">Today 5:12 PM</div>
+      <div style="align-self:flex-start;max-width:75%;background:#e9e9eb;color:#000;border-radius:18px;padding:9px 14px;font-family:-apple-system,system-ui;font-size:16px;line-height:1.3;">What should I get for dinner tonight? 😋</div>
+
+      <div style="align-self:flex-end;max-width:86%;margin-top:6px;">
+        <div style="border-radius:20px;overflow:hidden;background:var(--color-bg);border:2px solid var(--color-text);">
+          <div style="background:var(--color-accent);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:8px;">
+            <div style="width:15px;height:15px;background:#fff;"></div>
+            <span style="font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.1em;text-transform:uppercase;">Niu's Kitchen — Tonight</span>
+          </div>
+          <div style="padding:12px 14px;">
+            <div style="font-family:var(--font-heading);font-weight:800;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 55%,transparent);margin-bottom:6px;">Ordering</div>
+            ${dishes}
+            <div style="height:2px;background:var(--color-divider);margin:10px 0;"></div>
+            <div style="font-family:var(--font-heading);font-weight:800;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent);margin-bottom:6px;">Buy (${ingCount} items)</div>
+            ${buy}
+          </div>
+        </div>
+        <div style="text-align:right;margin-top:3px;font-family:-apple-system,system-ui;font-size:11px;color:#8e8e93;">${state.shareSent ? 'Delivered' : 'Draft — tap send'}</div>
+      </div>
+    </div>
+
+    <div style="flex:none;padding:8px 12px 30px;border-top:.5px solid rgba(0,0,0,.12);background:#fff;">
+      ${state.shareSent ? `
+        <button data-act="closeShare" style="width:100%;background:var(--color-text);color:var(--color-bg);border:0;padding:14px;font-family:var(--font-heading);font-weight:800;font-size:14px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;">Done</button>
+      ` : `
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;border:1px solid #d1d1d6;border-radius:19px;padding:9px 14px;font-family:-apple-system,system-ui;font-size:15px;color:#8e8e93;">Attached your order…</div>
+          <button data-act="send" style="width:38px;height:38px;border-radius:50%;background:#0a84ff;border:0;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
+      `}
+    </div>
+  </div>`;
+}
+
+function renderToast(){
+  if(!state.toast) return '';
+  return `<div style="position:absolute;left:20px;right:20px;bottom:104px;z-index:40;background:var(--color-text);color:var(--color-bg);padding:14px 16px;font-family:var(--font-heading);font-weight:800;font-size:13px;letter-spacing:.03em;text-transform:uppercase;animation:nkToast 2.2s ease forwards;pointer-events:none;">${esc(state.toast)}</div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Render
+   ═══════════════════════════════════════════════════════════════════════ */
+const $header   = document.getElementById('header');
+const $scroll   = document.getElementById('scroll');
+const $tabbar   = document.getElementById('tabbar');
+const $overlays = document.getElementById('overlays');
+const $status   = document.getElementById('statusbar');
+
+const SCREENS = { menu:renderMenu, order:renderOrder, list:renderList, add:renderAdd };
+let lastScreen = null;
+
+function render(){
+  $header.innerHTML = renderHeader();
+  $tabbar.innerHTML = renderTabs();
+
+  // Preserve scroll position when re-rendering the same screen (qty steppers,
+  // ingredient check-offs) so the list doesn't jump under the user's thumb.
+  const keepScroll = lastScreen === state.screen ? $scroll.scrollTop : 0;
+  $scroll.innerHTML = (SCREENS[state.screen] || renderMenu)();
+  $scroll.scrollTop = keepScroll;
+  lastScreen = state.screen;
+
+  $overlays.innerHTML = renderDetail() + renderShare() + renderToast();
+  $status.classList.toggle('on-white', state.share);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Interaction
+   ═══════════════════════════════════════════════════════════════════════ */
+const app = document.getElementById('app');
+
+const ACTIONS = {
+  go(el){
+    const target = el.dataset.screen;
+    // Tapping "Add" from elsewhere always starts a fresh dish; leaving the
+    // screen drops any half-finished edit.
+    if(target === 'add' && state.screen !== 'add') resetForm();
+    if(target !== 'add') resetForm();
+    state.screen = target;
+    state.detail = null;
+  },
+  edit(){
+    const d = recipeById(state.detail);
+    if(!d) return;
+    state.editing = d.id;
+    state.confirmDelete = false;
+    state.form = {
+      name: d.name,
+      en: d.en === 'Your recipe' ? '' : d.en,
+      cat: d.cat,
+      time: String(d.time || ''),
+      ingredients: d.ing.length
+        ? d.ing.map(i => ({ name:i.n, qty: i.q ? String(i.q) : '', unit:i.u }))
+        : [{ name:'', qty:'', unit:'' }],
+    };
+    state.detail = null;
+    state.screen = 'add';
+  },
+  removeDish(){
+    // Two-tap confirm — deleting a dish also drops it from the current order.
+    if(!state.confirmDelete){ state.confirmDelete = true; return; }
+    const id = state.editing;
+    const r = recipeById(id);
+    state.recipes = state.recipes.filter(x => x.id !== id);
+    delete state.cart[id];
+    dropPhoto('photo-' + id);
+    resetForm();
+    state.screen = 'menu';
+    save();
+    showToast((r ? r.name : 'Dish') + ' removed');
+  },
+  open(el){ state.detail = el.dataset.id; },
+  closeDetail(){ state.detail = null; },
+  backdrop(el, ev){ if(ev.target === el) state.detail = null; },
+  add(el){
+    const r = recipeById(el.dataset.id);
+    setCart(r.id, 1);
+    showToast(r.name + ' added');
+  },
+  inc(el){ setCart(el.dataset.id, (state.cart[el.dataset.id] || 0) + 1); },
+  dec(el){ setCart(el.dataset.id, (state.cart[el.dataset.id] || 0) - 1); },
+  remove(el){ setCart(el.dataset.id, 0); },
+  detailAdd(){
+    const d = recipeById(state.detail);
+    if(!d) return;
+    setCart(d.id, (state.cart[d.id] || 0) + 1);
+    showToast(d.name + ' added');
+  },
+  toggle(el){
+    const k = el.dataset.key;
+    if(state.checked[k]) delete state.checked[k];
+    else state.checked[k] = true;
+    save();
+  },
+  reset(){ state.checked = {}; save(); },
+  share(){
+    if(Object.keys(state.cart).length === 0){ showToast('Add a dish first'); return; }
+    state.share = true;
+    state.shareSent = false;
+  },
+  send(){ state.shareSent = true; },
+  closeShare(){ state.share = false; state.shareSent = false; },
+  cat(el){ state.form.cat = el.dataset.cat; },
+  addIng(){ state.form.ingredients.push({ name:'', qty:'', unit:'' }); },
+  rmIng(el){
+    const a = state.form.ingredients.filter((_, j) => j !== Number(el.dataset.i));
+    state.form.ingredients = a.length ? a : [{ name:'', qty:'', unit:'' }];
+  },
+  save(){ saveRecipe(); },
+  clearPhoto(el){ dropPhoto(el.dataset.id); },
+  backup(){ exportBackup(); },
+  restore(){ backuppick.value = ''; backuppick.click(); },
+};
+
+app.addEventListener('click', ev => {
+  const slotEl = ev.target.closest('[data-slot]');
+  const el = ev.target.closest('[data-act]');
+
+  if(el){
+    const fn = ACTIONS[el.dataset.act];
+    if(fn){
+      // showToast renders on its own; other actions render once here.
+      const before = state.toast;
+      fn(el, ev);
+      if(state.toast === before) render();
+      return;
+    }
+  }
+  if(slotEl){ pickPhoto(slotEl.dataset.slot); }
+});
+
+// Live-bind form inputs into state without re-rendering (keeps caret + focus).
+app.addEventListener('input', ev => {
+  const el = ev.target;
+  if(el.dataset.inp === 'name' || el.dataset.inp === 'en' || el.dataset.inp === 'time'){
+    state.form[el.dataset.inp] = el.value;
+  }else if(el.dataset.inp === 'ing'){
+    state.form.ingredients[Number(el.dataset.i)][el.dataset.f] = el.value;
+  }
+});
+
+function saveRecipe(){
+  const f = state.form;
+  if(!f.name.trim()){ showToast('Add a dish name'); return; }
+
+  const ing = f.ingredients.filter(x => x.name.trim()).map(x => ({
+    n: x.name.trim(),
+    q: x.qty !== '' && !isNaN(parseFloat(x.qty)) ? parseFloat(x.qty) : 0,
+    u: x.unit.trim(),
+    g: guessGroup(x.name),
+  }));
+
+  const time = parseInt(f.time, 10);
+
+  // Editing an existing dish updates in place, keeping its id so anything
+  // already in the order — and its photo — stays attached.
+  if(state.editing){
+    const i = state.recipes.findIndex(r => r.id === state.editing);
+    if(i === -1){ resetForm(); state.screen = 'menu'; return; }
+    const prev = state.recipes[i];
+    state.recipes[i] = {
+      ...prev,
+      name: f.name.trim(),
+      en:   f.en.trim() || prev.en,
+      cat:  f.cat,
+      time: Number.isFinite(time) && time > 0 ? time : prev.time,
+      ing,
+    };
+    const name = state.recipes[i].name;
+    resetForm();
+    state.screen = 'menu';
+    save();
+    showToast(name + ' updated');
+    return;
+  }
+
+  const id = 'r' + Date.now();
+  const recipe = {
+    id,
+    name: f.name.trim(),
+    en:   f.en.trim() || 'Your recipe',
+    cat:  f.cat,
+    time: Number.isFinite(time) && time > 0 ? time : 40,
+    ing,
+  };
+  state.recipes.push(recipe);
+
+  // Carry the photo from the form slot over to the new dish's slot.
+  if(state.photos['new-dish-photo']){
+    setPhoto('photo-' + id, state.photos['new-dish-photo']);
+    dropPhoto('new-dish-photo');
+  }
+
+  resetForm();
+  state.screen = 'menu';
+  save();
+  showToast(recipe.name + ' saved to menu');
+}
+
+/* ── Photo slots: click to browse, drag an image to drop ────────────────── */
+const filepick = document.getElementById('filepick');
+let pendingSlot = null;
+
+function pickPhoto(id){
+  pendingSlot = id;
+  filepick.value = '';
+  filepick.click();
+}
+filepick.addEventListener('change', () => {
+  if(filepick.files[0] && pendingSlot) readImage(filepick.files[0], pendingSlot);
+});
+
+app.addEventListener('dragover', ev => {
+  const s = ev.target.closest('[data-slot]');
+  if(!s) return;
+  ev.preventDefault();
+  s.classList.add('drag');
+});
+app.addEventListener('dragleave', ev => {
+  const s = ev.target.closest('[data-slot]');
+  if(s) s.classList.remove('drag');
+});
+app.addEventListener('drop', ev => {
+  const s = ev.target.closest('[data-slot]');
+  if(!s) return;
+  ev.preventDefault();
+  s.classList.remove('drag');
+  const file = ev.dataTransfer.files[0];
+  if(file && file.type.startsWith('image/')) readImage(file, s.dataset.slot);
+});
+
+/** Downscale to a sane size before storing — full-res data URLs blow the quota. */
+function readImage(file, slotId){
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 900;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width  = Math.round(img.width  * scale);
+      c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      setPhoto(slotId, c.toDataURL('image/jpeg', 0.82));
+      render();
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ── Clock ──────────────────────────────────────────────────────────────── */
+function tick(){
+  const d = new Date();
+  let h = d.getHours() % 12; if(h === 0) h = 12;
+  document.getElementById('clock').textContent = h + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+tick();
+setInterval(tick, 20000);
+
+/* ── Boot ───────────────────────────────────────────────────────────────── */
+const backuppick = document.getElementById('backuppick');
+backuppick.addEventListener('change', () => {
+  if(backuppick.files[0]) importBackup(backuppick.files[0]);
+});
+
+load();
+render();
+
+// Photos load asynchronously, so paint once without them and again when ready.
+photoAll()
+  .then(p => { state.photos = { ...p, ...state.photos }; render(); })
+  .catch(() => {});
+
+// Ask the browser not to evict this app's data under storage pressure.
+if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+</script>
+</body>
+</html>
