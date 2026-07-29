@@ -8,7 +8,7 @@
    it discards the old one on activate — without that, a stale copy can be
    served indefinitely. */
 
-const VERSION = 'nius-v3';
+const VERSION = 'nius-v4';
 const SHELL = [
   './',
   './index.html',

@@ -239,7 +239,7 @@ const GROUP_ORDER = ['Protein','Produce','Herbs & Aromatics','Pantry'];
 const STORE_KEY = 'nius-kitchen/v1';
 // Shown small on the Menu screen. If a phone reports an older build than the
 // one deployed, it is serving a stale cache rather than misbehaving.
-const BUILD = '2026-07-19-e';
+const BUILD = '2026-07-19-f';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    State
@@ -266,10 +266,12 @@ const state = {
   photos: {},      // slot id -> data URL
   editing: null,   // recipe id being edited, or null when adding a new dish
   confirmDelete: false,
-  form: { name:'', en:'', cat:'Soup', time:'', ingredients:[{name:'',qty:'',unit:''}] },
+  form: { name:'', en:'', cat:'Soup', time:'', kcal:'', ingredients:[{name:'',qty:'',unit:''}] },
+  decideOpen: false,       // "what should we eat?" sheet
+  pick: [],                // current suggestion (recipe ids)
 };
 
-const blankForm = () => ({ name:'', en:'', cat:'Soup', time:'', ingredients:[{ name:'', qty:'', unit:'' }] });
+const blankForm = () => ({ name:'', en:'', cat:'Soup', time:'', kcal:'', ingredients:[{ name:'', qty:'', unit:'' }] });
 function resetForm(){
   state.form = blankForm();
   state.editing = null;
@@ -306,16 +308,38 @@ function save(){
   scheduleFlush();
 }
 
-const DB_NAME = 'nius-kitchen', PHOTO_STORE = 'photos';
+const DB_NAME = 'nius-kitchen', PHOTO_STORE = 'photos', KV_STORE = 'kv';
 let _dbp;
 function db(){
   if(!_dbp) _dbp = new Promise((res, rej) => {
-    const rq = indexedDB.open(DB_NAME, 1);
-    rq.onupgradeneeded = () => rq.result.createObjectStore(PHOTO_STORE);
+    const rq = indexedDB.open(DB_NAME, 2);
+    rq.onupgradeneeded = () => {
+      const d = rq.result;
+      if(!d.objectStoreNames.contains(PHOTO_STORE)) d.createObjectStore(PHOTO_STORE);
+      if(!d.objectStoreNames.contains(KV_STORE))    d.createObjectStore(KV_STORE);
+    };
     rq.onsuccess = () => res(rq.result);
     rq.onerror   = () => rej(rq.error);
   });
   return _dbp;
+}
+// Small durable key/value store. iOS clears localStorage for an installed
+// web app when it's killed, but IndexedDB survives — so the household id,
+// which pairs the two phones, lives here as well.
+function kvGet(key){
+  return db().then(d => new Promise((res, rej) => {
+    const rq = d.transaction(KV_STORE, 'readonly').objectStore(KV_STORE).get(key);
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror   = () => rej(rq.error);
+  })).catch(() => undefined);
+}
+function kvPut(key, val){
+  return db().then(d => new Promise((res, rej) => {
+    const t = d.transaction(KV_STORE, 'readwrite');
+    t.objectStore(KV_STORE).put(val, key);
+    t.oncomplete = () => res();
+    t.onerror    = () => rej(t.error);
+  })).catch(() => {});
 }
 function photoTx(mode, fn){
   return db().then(d => new Promise((res, rej) => {
@@ -410,18 +434,28 @@ function newHouseholdId(){
   return btoa(String.fromCharCode(...a)).replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
 }
 
-/** A link with #k=<id> joins that household — this is how the second phone pairs. */
-function resolveHousehold(){
+// Write the household id everywhere durable, so a launch always finds it.
+function persistHousehold(id){
+  try{ localStorage.setItem(HOUSE_KEY, id); }catch(e){}
+  kvPut('household', id);
+}
+
+/** Decide which household this launch belongs to. A link with #k=<id> joins
+ *  that one. Otherwise prefer localStorage, then the IndexedDB copy — which
+ *  survives even when iOS wipes localStorage for an installed app on kill —
+ *  and only mint a fresh id when nothing at all is found. */
+async function resolveHousehold(){
   const fromLink = new URLSearchParams(location.hash.slice(1)).get('k');
-  const stored = localStorage.getItem(HOUSE_KEY);
+  const stored = localStorage.getItem(HOUSE_KEY) || await kvGet('household');
+
   if(fromLink && fromLink !== stored){
-    localStorage.setItem(HOUSE_KEY, fromLink);
+    persistHousehold(fromLink);
     // Joining someone else's kitchen: their data wins, so don't push ours over it.
     SYNC_FIELDS.forEach(f => { lastSynced[f] = JSON.stringify(state[f]); });
     return fromLink;
   }
   const id = stored || newHouseholdId();
-  localStorage.setItem(HOUSE_KEY, id);
+  persistHousehold(id);
   return id;
 }
 
@@ -596,7 +630,7 @@ async function joinHousehold(raw){
   if(id === household){ showToast('Already in this kitchen'); return; }
 
   household = id;
-  localStorage.setItem(HOUSE_KEY, id);
+  persistHousehold(id);
   // Treat the other phone as the source of truth, so nothing local is pushed
   // over the kitchen we are joining.
   SYNC_FIELDS.forEach(f => { lastSynced[f] = JSON.stringify(state[f]); });
@@ -616,7 +650,7 @@ async function joinHousehold(raw){
 
 async function initCloud(){
   if(!cloudConfigured) return;
-  household = resolveHousehold();
+  household = await resolveHousehold();
   try{
     const mod = await import('https://esm.sh/@supabase/supabase-js@2');
     sb = mod.createClient(CLOUD.url, CLOUD.anonKey, { auth:{ persistSession:false } });
@@ -852,6 +886,28 @@ function lastCookedLabel(r){
   return `made ${Math.round(d / 30)} months ago`;
 }
 
+/* ── Decide what to eat ─────────────────────────────────────────────────
+   A weighted random pick that leans toward dishes not made lately, and
+   obeys whatever menu filters are active — so "chicken only" still works. */
+function pickDishes(n){
+  const pool = visibleRecipes();
+  if(!pool.length) return [];
+  n = Math.min(n, pool.length);
+  const weight = r => {
+    const d = daysSince(r.lastCooked);
+    return d === null ? 60 : Math.min(60, d + 1);   // never made pulls hardest
+  };
+  const rest = pool.slice();
+  const chosen = [];
+  while(chosen.length < n && rest.length){
+    const total = rest.reduce((s, r) => s + weight(r), 0);
+    let x = Math.random() * total, i = 0;
+    for(; i < rest.length - 1; i++){ x -= weight(rest[i]); if(x <= 0) break; }
+    chosen.push(rest.splice(i, 1)[0]);
+  }
+  return chosen.map(r => r.id);
+}
+
 /** A dish's description, minus the old auto-filled placeholder. Existing
  *  recipes have 'Your recipe' saved, which reads as a bug under a real name. */
 function subtitleOf(r){
@@ -882,6 +938,7 @@ const ICON = {
   list:  `<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>`,
   add:   `<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18"/><path d="M12 8v8M8 12h8"/></svg>`,
   check2: w => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+  dice: w => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor"/></svg>`,
   pencil: w => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>`,
   check: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
 };
@@ -1014,7 +1071,7 @@ function renderMenu(){
               <span class="chip">${esc(r.cat)}</span>
             </div>
             ${subtitleOf(r) ? `<div class="muted" style="margin-top:3px;font-size:12.5px;">${esc(subtitleOf(r))}</div>` : ''}
-            <div style="margin-top:4px;font-size:11.5px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 70%,transparent);">${r.time} min · ${r.ing.length} ingredients</div>
+            <div style="margin-top:4px;font-size:11.5px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 70%,transparent);">${r.time} min · ${r.ing.length} ingredients${r.kcal ? ' · ' + r.kcal + ' kcal' : ''}</div>
             <div style="margin-top:2px;font-size:11.5px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:${r.lastCooked ? 'color-mix(in srgb,var(--color-text) 58%,transparent)' : 'var(--color-accent)'};">${esc(lastCookedLabel(r))}</div>
           </div>
           <div style="margin-top:9px;">
@@ -1033,7 +1090,12 @@ function renderMenu(){
       </div>`;
   }).join('');
 
-  return `<div>${renderFilters()}${cards}
+  const decideBar = state.recipes.length > 1 ? `
+    <div style="padding:14px 20px 4px;">
+      <button class="btn-accent" data-act="decide" style="width:100%;justify-content:center;padding:14px;font-size:14px;">${ICON.dice(17)} What should we eat?</button>
+    </div>` : '';
+
+  return `<div>${decideBar}${renderFilters()}${cards}
     <div style="padding:26px 20px 34px;text-align:center;">
       <div style="font-size:12px;letter-spacing:.04em;color:color-mix(in srgb,var(--color-text) 70%,transparent);">Want something not here?</div>
       <button class="btn-outline" data-act="go" data-screen="add" style="margin-top:10px;">${ICON.plus(15)} Add a new dish</button>
@@ -1120,6 +1182,45 @@ function renderCats(){
   </div>`;
 }
 
+/** "What should we eat?" — shows the current suggestion. */
+function renderDecide(){
+  if(!state.decideOpen) return '';
+  const picks = state.pick.map(recipeById).filter(Boolean);
+
+  const known = picks.filter(r => r.kcal);
+  const kcalTotal = known.reduce((s, r) => s + r.kcal, 0);
+  const kcalLine = known.length
+    ? `${kcalTotal} kcal${known.length < picks.length ? ' (partial — some dishes have no kcal)' : ' total'}`
+    : '';
+
+  const cards = picks.length ? picks.map(r => `
+    <div style="border:2px solid var(--color-text);padding:14px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:19px;line-height:1.08;letter-spacing:-.02em;">${esc(r.name)}</div>
+        <span class="chip">${esc(r.cat)}</span>
+      </div>
+      <div style="margin-top:4px;font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.02em;color:color-mix(in srgb,var(--color-text) 70%,transparent);">${r.time} min${r.kcal ? ' · ' + r.kcal + ' kcal' : ''} · ${esc(lastCookedLabel(r))}</div>
+    </div>`).join('')
+    : `<p class="muted" style="font-size:14px;">No dishes to choose from — add some, or clear your filters.</p>`;
+
+  return `
+  <div data-act="decideBackdrop" style="position:absolute;inset:0;z-index:36;background:rgba(32,30,29,.4);animation:nkFade .18s ease;">
+    <div data-stop class="nk-scroll sheet-safe" style="position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;background:var(--color-bg);animation:nkUp .28s cubic-bezier(.2,.8,.2,1);padding:22px 20px 30px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <h2 style="font-size:26px;line-height:1;letter-spacing:-.025em;">Tonight, try…</h2>
+        <button data-act="closeDecide" style="border:0;background:none;cursor:pointer;color:var(--color-text);padding:2px;">${ICON.close(20)}</button>
+      </div>
+      <p class="muted" style="margin-top:8px;font-size:13px;">Leaning toward dishes you haven't made in a while${state.filterCat || state.filterTag ? ', within your filters' : ''}.</p>
+      <div style="margin-top:16px;">${cards}</div>
+      ${kcalLine ? `<div style="font-family:var(--font-heading);font-weight:800;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--color-accent);margin:2px 0 4px;">≈ ${esc(kcalLine)}</div>` : ''}
+      ${picks.length ? `
+        <button class="btn-accent" data-act="addPick" style="margin-top:14px;width:100%;padding:15px 18px;font-size:14px;display:block;text-align:left;">Add these to my order</button>
+        <button class="btn-outline" data-act="reshuffle" style="margin-top:10px;width:100%;padding:14px 18px;display:block;text-align:left;">Show me another set</button>
+      ` : ''}
+    </div>
+  </div>`;
+}
+
 /** Staples picker — everything the menu uses, tick what you always have. */
 function renderStaples(){
   if(!state.staplesOpen) return '';
@@ -1196,6 +1297,15 @@ function renderOrder(){
 
   const { count: ingCount } = buildGroups();
 
+  // Calories, counting each batch. Only meaningful if some dishes carry a
+  // kcal value; shown as approximate, and flagged when partial.
+  let kcalTotal = 0, kcalKnown = 0, kcalMissing = 0;
+  ids.forEach(id => {
+    const r = recipeById(id);
+    if(r && r.kcal){ kcalTotal += r.kcal * state.cart[id]; kcalKnown++; }
+    else kcalMissing++;
+  });
+
   const rows = ids.map(id => {
     const r = recipeById(id);
     const qty = state.cart[id];
@@ -1220,6 +1330,9 @@ function renderOrder(){
       <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 70%,transparent);">
         <span>${ids.length}${ids.length === 1 ? ' dish' : ' dishes'}</span><span>${ingCount} ingredients</span>
       </div>
+      ${kcalKnown ? `<div style="margin-top:8px;display:flex;justify-content:space-between;font-family:var(--font-heading);font-weight:800;font-size:13px;letter-spacing:.03em;text-transform:uppercase;color:var(--color-accent);">
+        <span>≈ ${kcalTotal} kcal</span><span style="color:color-mix(in srgb,var(--color-text) 55%,transparent);">${kcalMissing ? kcalMissing + ' without kcal' : 'all counted'}</span>
+      </div>` : ''}
       <button class="btn-accent btn-wide" data-act="share" style="margin-top:16px;"><span>Send order to Bao</span>${ICON.send(20)}</button>
       <button class="btn-outline" data-act="go" data-screen="list" style="margin-top:10px;width:100%;padding:14px 18px;text-align:left;display:block;">View shopping list</button>
       <button class="btn-outline" data-act="cooked" style="margin-top:10px;width:100%;padding:14px 18px;text-align:left;display:block;">${ICON.check2(14)} We cooked this — clear order</button>
@@ -1304,9 +1417,13 @@ function renderAdd(){
         <label class="label">Description</label>
         <input class="nk-in" data-inp="en" value="${esc(f.en)}" placeholder="Spicy beef noodle soup" style="width:100%;">
       </div>
-      <div style="width:96px;flex:none;">
+      <div style="width:80px;flex:none;">
         <label class="label">Minutes</label>
         <input class="nk-in" data-inp="time" value="${esc(f.time)}" placeholder="40" inputmode="numeric" style="width:100%;text-align:center;">
+      </div>
+      <div style="width:88px;flex:none;">
+        <label class="label">kcal</label>
+        <input class="nk-in" data-inp="kcal" value="${esc(f.kcal)}" placeholder="—" inputmode="numeric" style="width:100%;text-align:center;">
       </div>
     </div>
 
@@ -1373,7 +1490,7 @@ function renderDetail(){
           <h2 style="font-size:28px;line-height:1;letter-spacing:-.025em;">${esc(d.name)}</h2>
           <span class="chip">${esc(d.cat)}</span>
         </div>
-        <div class="muted" style="margin-top:5px;font-size:14px;">${[subtitleOf(d), d.time ? d.time + ' min' : ''].filter(Boolean).join(' · ')}</div>
+        <div class="muted" style="margin-top:5px;font-size:14px;">${[subtitleOf(d), d.time ? d.time + ' min' : '', d.kcal ? d.kcal + ' kcal' : ''].filter(Boolean).join(' · ')}</div>
         <div class="rule" style="margin:16px 0;"></div>
         <div style="font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--color-accent);margin-bottom:6px;">Ingredients</div>
         ${d.ing.map(i => `
@@ -1459,7 +1576,7 @@ function render(){
   $scroll.scrollTop = keepScroll;
   lastScreen = state.screen;
 
-  $overlays.innerHTML = renderDetail() + renderPair() + renderCats() + renderStaples() + renderToast();
+  $overlays.innerHTML = renderDetail() + renderPair() + renderCats() + renderStaples() + renderDecide() + renderToast();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1487,6 +1604,7 @@ const ACTIONS = {
       en: d.en === 'Your recipe' ? '' : d.en,
       cat: d.cat,
       time: String(d.time || ''),
+      kcal: d.kcal ? String(d.kcal) : '',
       ingredients: d.ing.length
         ? d.ing.map(i => ({ name:i.n, qty: i.q ? String(i.q) : '', unit:i.u }))
         : [{ name:'', qty:'', unit:'' }],
@@ -1571,6 +1689,18 @@ const ACTIONS = {
     state.checked = {};
     save();
     showToast(`${ids.length} ${ids.length === 1 ? 'dish' : 'dishes'} marked as cooked`);
+  },
+
+  decide(){ state.pick = pickDishes(3); state.decideOpen = true; },
+  reshuffle(){ state.pick = pickDishes(3); },
+  closeDecide(){ state.decideOpen = false; },
+  decideBackdrop(el, ev){ if(ev.target !== el) return false; state.decideOpen = false; },
+  addPick(){
+    if(!state.pick.length) return;
+    state.pick.forEach(id => { if(!state.cart[id]) setCart(id, 1); });
+    state.decideOpen = false;
+    state.screen = 'order';
+    showToast('Added to your order');
   },
 
   openStaples(){ state.staplesOpen = true; },
@@ -1666,7 +1796,7 @@ app.addEventListener('input', ev => {
     state.newCat = el.value;
   }else if(el.dataset.inp === 'renameTo'){
     state.renameTo = el.value;
-  }else if(el.dataset.inp === 'name' || el.dataset.inp === 'en' || el.dataset.inp === 'time'){
+  }else if(el.dataset.inp === 'name' || el.dataset.inp === 'en' || el.dataset.inp === 'time' || el.dataset.inp === 'kcal'){
     state.form[el.dataset.inp] = el.value;
   }else if(el.dataset.inp === 'ing'){
     state.form.ingredients[Number(el.dataset.i)][el.dataset.f] = el.value;
@@ -1685,6 +1815,8 @@ function saveRecipe(){
   }));
 
   const time = parseInt(f.time, 10);
+  const kcal = parseInt(f.kcal, 10);
+  const kcalVal = Number.isFinite(kcal) && kcal > 0 ? kcal : null;
 
   // Editing an existing dish updates in place, keeping its id so anything
   // already in the order — and its photo — stays attached.
@@ -1698,6 +1830,7 @@ function saveRecipe(){
       en:   f.en.trim() || prev.en,
       cat:  f.cat,
       time: Number.isFinite(time) && time > 0 ? time : prev.time,
+      kcal: kcalVal,
       ing,
     };
     const name = state.recipes[i].name;
@@ -1715,6 +1848,7 @@ function saveRecipe(){
     en:   f.en.trim(),
     cat:  f.cat,
     time: Number.isFinite(time) && time > 0 ? time : 40,
+    kcal: kcalVal,
     ing,
   };
   state.recipes.push(recipe);
