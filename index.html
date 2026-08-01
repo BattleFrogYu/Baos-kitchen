@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Bao's Kitchen</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#ec3013">
@@ -31,8 +31,13 @@
   --font-body:"Archivo","Noto Sans SC",system-ui,sans-serif;
 }
 *,*::before,*::after{box-sizing:border-box}
+/* Lock zoom — the app is a fixed phone-sized layout, so pinch and double-tap
+   zoom only ever knock it out of alignment. touch-action kills double-tap;
+   the gesture listeners below kill pinch on installed iOS. */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
 body{
   margin:0;background:#cbc8c4;color:var(--color-text);
+  touch-action:manipulation;
   font-family:var(--font-body);font-size:15px;line-height:1.55;
   display:flex;align-items:center;justify-content:center;min-height:100vh;
 }
@@ -239,7 +244,7 @@ const GROUP_ORDER = ['Protein','Produce','Herbs & Aromatics','Pantry'];
 const STORE_KEY = 'nius-kitchen/v1';
 // Shown small on the Menu screen. If a phone reports an older build than the
 // one deployed, it is serving a stale cache rather than misbehaving.
-const BUILD = '2026-07-19-f';
+const BUILD = '2026-07-19-h';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    State
@@ -943,6 +948,59 @@ const ICON = {
   check: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
 };
 
+/* ── Mascots ────────────────────────────────────────────────────────────
+   Original chibi rabbit + frog, drawn from scratch. Shared warm outline,
+   dot eyes, blush. Each uses the outline-behind-fill trick so the silhouette
+   has one clean rim and no seams where ears/bumps meet the head. */
+const MASCOT_LINE = '#57473b';
+const MASCOT_BLUSH = '#f2a3ab';
+
+/** White rabbit — tall ears leaning out, round face. viewBox 120×140. */
+function rabbit(size){
+  const L = MASCOT_LINE, body = '#fdfaf5', pink = '#f4c3cb';
+  const h = Math.round(size * 140 / 120);
+  return `<svg width="${size}" height="${h}" viewBox="0 0 120 140" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible;">
+    <g transform="rotate(-12 60 96)"><rect x="38" y="6" width="21" height="74" rx="10.5" fill="${L}"/></g>
+    <g transform="rotate(12 60 96)"><rect x="61" y="6" width="21" height="74" rx="10.5" fill="${L}"/></g>
+    <circle cx="60" cy="96" r="41" fill="${L}"/>
+    <g transform="rotate(-12 60 96)"><rect x="40.6" y="8.6" width="15.8" height="68.8" rx="7.9" fill="${body}"/></g>
+    <g transform="rotate(12 60 96)"><rect x="63.6" y="8.6" width="15.8" height="68.8" rx="7.9" fill="${body}"/></g>
+    <circle cx="60" cy="96" r="38.2" fill="${body}"/>
+    <g transform="rotate(-12 60 96)"><rect x="44.5" y="16" width="8" height="50" rx="4" fill="${pink}"/></g>
+    <g transform="rotate(12 60 96)"><rect x="67.5" y="16" width="8" height="50" rx="4" fill="${pink}"/></g>
+    <ellipse cx="47" cy="98" rx="4.5" ry="6" fill="${L}"/><ellipse cx="73" cy="98" rx="4.5" ry="6" fill="${L}"/>
+    <circle cx="48.5" cy="95.6" r="1.7" fill="#fff"/><circle cx="74.5" cy="95.6" r="1.7" fill="#fff"/>
+    <ellipse cx="32" cy="108" rx="6.6" ry="4.3" fill="${MASCOT_BLUSH}" opacity="0.85"/><ellipse cx="88" cy="108" rx="6.6" ry="4.3" fill="${MASCOT_BLUSH}" opacity="0.85"/>
+    <path d="M56 104 L64 104 L60 108 Z" fill="${MASCOT_BLUSH}"/>
+    <path d="M60 108 v2.5 M60 110.5 q-3.6 3 -6.4 0.7 M60 110.5 q3.6 3 6.4 0.7" stroke="${L}" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+  </svg>`;
+}
+
+/** Green frog — eye bumps on top, wide smile. viewBox 120×116. */
+function frog(size){
+  const L = MASCOT_LINE, body = '#83c95a', belly = '#d7ecb6';
+  const h = Math.round(size * 116 / 120);
+  return `<svg width="${size}" height="${h}" viewBox="0 0 120 116" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible;">
+    <circle cx="38" cy="34" r="18.5" fill="${L}"/><circle cx="82" cy="34" r="18.5" fill="${L}"/><circle cx="60" cy="72" r="44" fill="${L}"/>
+    <circle cx="38" cy="34" r="16" fill="${body}"/><circle cx="82" cy="34" r="16" fill="${body}"/><circle cx="60" cy="72" r="41.4" fill="${body}"/>
+    <ellipse cx="60" cy="88" rx="25" ry="19" fill="${belly}"/>
+    <circle cx="38" cy="33" r="9" fill="#fff"/><circle cx="82" cy="33" r="9" fill="#fff"/>
+    <circle cx="40" cy="35" r="4.6" fill="${L}"/><circle cx="80" cy="35" r="4.6" fill="${L}"/>
+    <circle cx="41.6" cy="32.8" r="1.6" fill="#fff"/><circle cx="81.6" cy="32.8" r="1.6" fill="#fff"/>
+    <circle cx="55" cy="60" r="1.5" fill="${L}"/><circle cx="65" cy="60" r="1.5" fill="${L}"/>
+    <ellipse cx="28" cy="74" rx="6.6" ry="4.3" fill="${MASCOT_BLUSH}" opacity="0.8"/><ellipse cx="92" cy="74" rx="6.6" ry="4.3" fill="${MASCOT_BLUSH}" opacity="0.8"/>
+    <path d="M35 73 Q60 93 85 73" stroke="${L}" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+  </svg>`;
+}
+
+/** The pair — frog leaning in on the left, rabbit on the right. */
+function mascotPair(size){
+  return `<span style="display:inline-flex;align-items:flex-end;line-height:0;">
+    <span style="transform:rotate(-7deg);transform-origin:bottom center;">${frog(size)}</span>
+    <span style="margin-left:${-Math.round(size*0.24)}px;transform:rotate(7deg);transform-origin:bottom center;">${rabbit(size)}</span>
+  </span>`;
+}
+
 /** A user-fillable photo slot: click to browse, or drag an image onto it. */
 function slot(id, placeholder){
   const src = state.photos[id];
@@ -971,7 +1029,7 @@ function renderHeader(){
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;">
       <div style="display:flex;align-items:center;gap:9px;">
-        <div style="width:20px;height:20px;background:var(--color-accent);"></div>
+        ${mascotPair(24)}
         <span style="font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.14em;text-transform:uppercase;">Bao's Kitchen</span>
       </div>
       ${state.screen === 'add' ? `
@@ -1097,8 +1155,12 @@ function renderMenu(){
 
   return `<div>${decideBar}${renderFilters()}${cards}
     <div style="padding:26px 20px 34px;text-align:center;">
-      <div style="font-size:12px;letter-spacing:.04em;color:color-mix(in srgb,var(--color-text) 70%,transparent);">Want something not here?</div>
-      <button class="btn-outline" data-act="go" data-screen="add" style="margin-top:10px;">${ICON.plus(15)} Add a new dish</button>
+      <div style="display:flex;align-items:flex-end;justify-content:center;gap:12px;margin-bottom:8px;">
+        ${frog(34)}
+        <div style="font-size:12px;letter-spacing:.04em;color:color-mix(in srgb,var(--color-text) 70%,transparent);padding-bottom:8px;">Want something not here?</div>
+        ${rabbit(30)}
+      </div>
+      <button class="btn-outline" data-act="go" data-screen="add" style="margin-top:6px;">${ICON.plus(15)} Add a new dish</button>
       <div style="margin-top:26px;padding-top:18px;border-top:1px solid var(--color-divider);display:flex;align-items:center;justify-content:center;gap:10px;">
         <button data-act="openCats" class="linkbtn">Categories</button>
         <span style="color:color-mix(in srgb,var(--color-text) 30%,transparent);">·</span>
@@ -1166,7 +1228,7 @@ function renderCats(){
   <div data-act="catsBackdrop" style="position:absolute;inset:0;z-index:36;background:rgba(32,30,29,.4);animation:nkFade .18s ease;">
     <div data-stop class="nk-scroll sheet-safe" style="position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;background:var(--color-bg);animation:nkUp .28s cubic-bezier(.2,.8,.2,1);padding:22px 20px 30px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-        <h2 style="font-size:26px;line-height:1;letter-spacing:-.025em;">Categories</h2>
+        <div style="display:flex;align-items:center;gap:10px;">${rabbit(28)}<h2 style="font-size:26px;line-height:1;letter-spacing:-.025em;">Categories</h2></div>
         <button data-act="closeCats" style="border:0;background:none;cursor:pointer;color:var(--color-text);padding:2px;">${ICON.close(20)}</button>
       </div>
       <p class="muted" style="margin-top:8px;font-size:13px;">Renaming moves every dish in that category with it. A category in use can't be removed.</p>
@@ -1207,7 +1269,7 @@ function renderDecide(){
   <div data-act="decideBackdrop" style="position:absolute;inset:0;z-index:36;background:rgba(32,30,29,.4);animation:nkFade .18s ease;">
     <div data-stop class="nk-scroll sheet-safe" style="position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;background:var(--color-bg);animation:nkUp .28s cubic-bezier(.2,.8,.2,1);padding:22px 20px 30px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-        <h2 style="font-size:26px;line-height:1;letter-spacing:-.025em;">Tonight, try…</h2>
+        <div style="display:flex;align-items:center;gap:10px;">${mascotPair(30)}<h2 style="font-size:26px;line-height:1;letter-spacing:-.025em;">Tonight, try…</h2></div>
         <button data-act="closeDecide" style="border:0;background:none;cursor:pointer;color:var(--color-text);padding:2px;">${ICON.close(20)}</button>
       </div>
       <p class="muted" style="margin-top:8px;font-size:13px;">Leaning toward dishes you haven't made in a while${state.filterCat || state.filterTag ? ', within your filters' : ''}.</p>
@@ -1242,7 +1304,7 @@ function renderStaples(){
   <div data-act="staplesBackdrop" style="position:absolute;inset:0;z-index:36;background:rgba(32,30,29,.4);animation:nkFade .18s ease;">
     <div data-stop class="nk-scroll sheet-safe" style="position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;background:var(--color-bg);animation:nkUp .28s cubic-bezier(.2,.8,.2,1);padding:22px 20px 30px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-        <h2 style="font-size:26px;line-height:1;letter-spacing:-.025em;">Always have</h2>
+        <div style="display:flex;align-items:center;gap:10px;">${frog(30)}<h2 style="font-size:26px;line-height:1;letter-spacing:-.025em;">Always have</h2></div>
         <button data-act="closeStaples" style="border:0;background:none;cursor:pointer;color:var(--color-text);padding:2px;">${ICON.close(20)}</button>
       </div>
       <p class="muted" style="margin-top:8px;font-size:13px;">Ticked ingredients stay off the shopping list. Good for soy sauce, salt, oil — things already in the cupboard.</p>
@@ -1288,7 +1350,8 @@ function renderOrder(){
   const ids = Object.keys(state.cart);
 
   if(ids.length === 0){
-    return `<div style="padding:70px 34px;text-align:center;">
+    return `<div style="padding:56px 34px;text-align:center;">
+      <div style="display:flex;justify-content:center;margin-bottom:18px;">${mascotPair(80)}</div>
       <div style="font-family:var(--font-heading);font-weight:800;font-size:22px;letter-spacing:-.02em;">No dishes yet</div>
       <p class="muted" style="margin-top:8px;font-size:14px;">Head to the menu and pick what you'd like to eat, Niu.</p>
       <button class="btn-accent" data-act="go" data-screen="menu" style="margin-top:16px;">Browse the menu</button>
@@ -1343,7 +1406,8 @@ function renderOrder(){
 /* ── Shopping-list screen ───────────────────────────────────────────────── */
 function renderList(){
   if(Object.keys(state.cart).length === 0){
-    return `<div style="padding:70px 34px;text-align:center;">
+    return `<div style="padding:56px 34px;text-align:center;">
+      <div style="display:flex;justify-content:center;margin-bottom:18px;">${frog(76)}</div>
       <div style="font-family:var(--font-heading);font-weight:800;font-size:22px;letter-spacing:-.02em;">Nothing to buy yet</div>
       <p class="muted" style="margin-top:8px;font-size:14px;">Once Niu orders dishes, every ingredient shows up here — added together.</p>
     </div>`;
@@ -1950,6 +2014,17 @@ if('serviceWorker' in navigator){
 }
 
 initCloud().catch(() => setSync('error'));
+
+// iOS ignores user-scalable=no in an installed app, so stop pinch by hand.
+['gesturestart', 'gesturechange', 'gestureend'].forEach(ev =>
+  document.addEventListener(ev, e => e.preventDefault(), { passive:false }));
+// And double-tap-to-zoom, which touch-action mostly handles but not everywhere.
+let lastTap = 0;
+document.addEventListener('touchend', e => {
+  const now = Date.now();
+  if(now - lastTap < 300) e.preventDefault();
+  lastTap = now;
+}, { passive:false });
 </script>
 </body>
 </html>
