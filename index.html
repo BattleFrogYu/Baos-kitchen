@@ -244,7 +244,7 @@ const GROUP_ORDER = ['Protein','Produce','Herbs & Aromatics','Pantry'];
 const STORE_KEY = 'nius-kitchen/v1';
 // Shown small on the Menu screen. If a phone reports an older build than the
 // one deployed, it is serving a stale cache rather than misbehaving.
-const BUILD = '2026-07-19-h';
+const BUILD = '2026-08-02-i';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    State
@@ -409,6 +409,10 @@ function load(){
 const CLOUD = window.NIUS_CONFIG || {};
 const cloudConfigured = !!(CLOUD.url && CLOUD.anonKey);
 const HOUSE_KEY = 'nius-kitchen/household';
+// A single shared kitchen, set in config.js. With it, both phones pin to the
+// same household — no per-device id, no pairing. It survives iOS wiping
+// storage, because the id comes from the app code, not from storage.
+const FIXED_HOUSE = CLOUD.household || null;
 
 let sb = null;             // supabase client
 let household = null;      // household id — the thing that pairs two phones
@@ -450,6 +454,20 @@ function persistHousehold(id){
  *  survives even when iOS wipes localStorage for an installed app on kill —
  *  and only mint a fresh id when nothing at all is found. */
 async function resolveHousehold(){
+  // Fixed shared kitchen wins over everything: no link, no stored id, no
+  // generation. This is what stops a phone from drifting to its own copy
+  // after iOS clears its storage.
+  if(FIXED_HOUSE){
+    const prev = localStorage.getItem(HOUSE_KEY) || await kvGet('household');
+    persistHousehold(FIXED_HOUSE);
+    if(prev !== FIXED_HOUSE){
+      // Switching onto the shared kitchen — the cloud row is the truth, so
+      // don't push this device's local copy over it.
+      SYNC_FIELDS.forEach(f => { lastSynced[f] = JSON.stringify(state[f]); });
+    }
+    return FIXED_HOUSE;
+  }
+
   const fromLink = new URLSearchParams(location.hash.slice(1)).get('k');
   const stored = localStorage.getItem(HOUSE_KEY) || await kvGet('household');
 
@@ -1191,7 +1209,7 @@ function renderSyncRow(){
     <div style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px;">
       <span style="width:7px;height:7px;border-radius:50%;background:${colour};flex:none;"></span>
       <span style="font-size:11px;letter-spacing:.04em;color:color-mix(in srgb,var(--color-text) 70%,transparent);">${esc(label)}</span>
-      ${cloudConfigured ? `<span style="color:color-mix(in srgb,var(--color-text) 25%,transparent);">·</span>
+      ${cloudConfigured && !FIXED_HOUSE ? `<span style="color:color-mix(in srgb,var(--color-text) 25%,transparent);">·</span>
       <button data-act="pair" class="linkbtn" style="font-size:10px;">Pair a phone</button>` : ''}
     </div>`;
 }

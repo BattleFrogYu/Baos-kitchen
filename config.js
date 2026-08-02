@@ -12,8 +12,13 @@
 //
 //  ⚠ Never paste the "service_role" key here. That one is a secret and would
 //    give anyone who found it full control of your database.
+//
+//  `household` pins BOTH phones to one shared kitchen — no pairing, and it
+//  can't drift to a per-device copy when iOS clears storage. Just the two of
+//  you: keep this the same on every device.
 // ─────────────────────────────────────────────────────────────────────────
 window.NIUS_CONFIG = {
   url: 'https://kmjnkgrbyfxkftypxmea.supabase.co',
   anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imttam5rZ3JieWZ4a2Z0eXB4bWVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ0MTc2ODYsImV4cCI6MjA5OTk5MzY4Nn0.cJFSlYU0KJF5YnEhujrPOs_SmFyEayv0vbOEa-zcbec',
+  household: 't6LDsNcDIVW',
 };
