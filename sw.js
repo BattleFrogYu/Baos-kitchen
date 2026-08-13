@@ -8,7 +8,7 @@
    it discards the old one on activate — without that, a stale copy can be
    served indefinitely. */
 
-const VERSION = 'nius-v7';
+const VERSION = 'nius-v8';
 const SHELL = [
   './',
   './index.html',
@@ -53,6 +53,15 @@ self.addEventListener('fetch', e => {
     }
     return res;
   };
+
+  // config.js: network first, like the page. It holds keys that change
+  // independently of the shell (e.g. adding googleMapsKey), and cache-first
+  // would serve the old copy until a VERSION bump — the app then wrongly
+  // reports "not connected". Online always wins; offline falls back to cache.
+  if(url.pathname.endsWith('/config.js')){
+    e.respondWith(fetch(req).then(save).catch(() => caches.match(req)));
+    return;
+  }
 
   // The page: network first, so a deploy shows up on the next launch rather
   // than the one after. Falls back to cache when there's no signal.
