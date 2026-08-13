@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tokyo Trip — Planner</title>
+<meta name="theme-color" content="#ec3013">
+<script src="config.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=Noto+Sans+SC:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+/* ── Same design tokens as Bao's Kitchen ─────────────────────────────────── */
+:root{
+  --color-bg:#f3f2f2;
+  --color-surface:#eae9e9;
+  --color-text:#201e1d;
+  --color-accent:#ec3013;
+  --color-divider:color-mix(in srgb,#201e1d 40%,transparent);
+  --font-heading:"Archivo","Noto Sans SC",system-ui,sans-serif;
+  --font-body:"Archivo","Noto Sans SC",system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{
+  margin:0;background:var(--color-bg);color:var(--color-text);
+  font-family:var(--font-body);font-size:15px;line-height:1.55;
+}
+h1,h2,h3{font-family:var(--font-heading);font-weight:800;line-height:1.12;letter-spacing:-0.015em;margin:0}
+button{font-family:inherit}
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+
+.wrap{max-width:640px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:var(--color-bg)}
+
+/* Header */
+header{flex:none;padding:22px 20px 0;background:var(--color-bg);position:sticky;top:0;z-index:20}
+header .kick{font-family:var(--font-heading);font-weight:800;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--color-accent)}
+header h1{font-size:30px;margin-top:2px}
+.rule{height:2px;background:var(--color-text);margin-top:14px}
+
+/* Tabs */
+.tabs{display:flex;gap:0;border-bottom:2px solid var(--color-text);background:var(--color-bg)}
+.tab{flex:1;background:none;border:0;padding:14px 0;cursor:pointer;
+  font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+  color:color-mix(in srgb,var(--color-text) 55%,transparent);border-bottom:3px solid transparent;margin-bottom:-2px}
+.tab.on{color:var(--color-text);border-bottom-color:var(--color-accent)}
+
+main{flex:1;padding:18px 20px 120px}
+.panel{display:none}
+.panel.on{display:block;animation:fade .2s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+
+/* Inputs */
+.label{display:block;font-family:var(--font-heading);font-weight:800;font-size:11px;letter-spacing:.1em;
+  text-transform:uppercase;color:color-mix(in srgb,var(--color-text) 70%,transparent);margin-bottom:7px}
+.nk-in-lg{width:100%;font-family:var(--font-body);background:var(--color-bg);color:var(--color-text);
+  border:2px solid var(--color-text);padding:13px 14px;font-size:16px;font-weight:600;outline:none}
+.nk-in-lg:focus{border-color:var(--color-accent)}
+.searchrow{display:flex;gap:10px;margin-bottom:12px}
+.searchrow .nk-in-lg{flex:1}
+
+/* Buttons */
+.btn-accent{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--color-accent);color:#fff;border:0;
+  padding:13px 18px;font-family:var(--font-heading);font-weight:800;font-size:13px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer}
+.btn-accent:disabled{opacity:.4;cursor:default}
+.btn-outline{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:none;border:2px solid var(--color-text);
+  color:var(--color-text);padding:12px 16px;font-family:var(--font-heading);font-weight:800;font-size:13px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer}
+.btn-wide{width:100%}
+
+/* Quick intent chips */
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 16px}
+.chip{border:1.5px solid var(--color-divider);background:none;padding:6px 11px;font-size:12px;font-weight:800;
+  letter-spacing:.04em;cursor:pointer;color:var(--color-text)}
+.chip:hover{border-color:var(--color-accent);color:var(--color-accent)}
+
+/* Cards */
+.card{border:2px solid var(--color-text);background:var(--color-bg);margin-bottom:12px;display:flex;overflow:hidden}
+.card .thumb{width:104px;flex:none;background:var(--color-surface);object-fit:cover}
+.card .body{flex:1;padding:12px 14px;min-width:0}
+.card h3{font-size:16px;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .meta{font-size:12px;color:color-mix(in srgb,var(--color-text) 65%,transparent);margin-bottom:6px}
+.card .addr{font-size:12px;color:color-mix(in srgb,var(--color-text) 55%,transparent);
+  overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin-bottom:8px}
+.badge{display:inline-block;font-family:var(--font-heading);font-weight:800;font-size:11px;letter-spacing:.03em;padding:2px 6px;margin-right:6px}
+.badge.rate{background:var(--color-text);color:#fff}
+.badge.open{color:#0a7d34;border:1.5px solid #0a7d34}
+.badge.shut{color:#b3261e;border:1.5px solid #b3261e}
+.badge.price{border:1.5px solid var(--color-divider)}
+.card .add{margin-top:2px}
+
+/* Itinerary list */
+.stop{display:flex;align-items:flex-start;gap:12px;border:2px solid var(--color-text);background:var(--color-bg);padding:12px 14px;margin-bottom:10px}
+.stop .num{flex:none;width:28px;height:28px;background:var(--color-accent);color:#fff;
+  font-family:var(--font-heading);font-weight:800;display:flex;align-items:center;justify-content:center}
+.stop .info{flex:1;min-width:0}
+.stop h3{font-size:15px}
+.stop .leg{font-size:12px;color:color-mix(in srgb,var(--color-text) 60%,transparent);margin-top:3px}
+.stop .rm{background:none;border:0;color:var(--color-accent);font-weight:800;cursor:pointer;font-size:20px;line-height:1;padding:0 4px}
+#map{width:100%;height:280px;border:2px solid var(--color-text);margin:14px 0;background:var(--color-surface)}
+
+.muted{color:color-mix(in srgb,var(--color-text) 62%,transparent)}
+.empty{text-align:center;padding:48px 20px;color:color-mix(in srgb,var(--color-text) 55%,transparent);
+  font-weight:600;letter-spacing:.02em}
+.count{font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+
+/* Setup banner (no key) */
+.banner{border:2px solid var(--color-accent);background:#fff;padding:16px 18px;margin-bottom:18px}
+.banner h3{color:var(--color-accent);font-size:14px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px}
+.banner code{background:var(--color-surface);padding:1px 5px;font-size:13px}
+
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-3px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+footer{position:fixed;bottom:0;left:0;right:0;background:var(--color-bg);border-top:2px solid var(--color-text);
+  padding:12px 20px calc(12px + env(safe-area-inset-bottom));z-index:30}
+footer .inner{max-width:640px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kick">Tokyo · 2026</div>
+    <h1>Trip Planner</h1>
+    <div class="tabs" style="margin-top:14px">
+      <button class="tab on" data-tab="find">找店</button>
+      <button class="tab" data-tab="route">排路线</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ── FIND ─────────────────────────────────────────────── -->
+    <section class="panel on" id="panel-find">
+      <div id="setup" class="banner" hidden>
+        <h3>还没连上 Google</h3>
+        <div class="muted" style="font-size:13px">在 <code>config.js</code> 里加一行 <code>googleMapsKey: '你的key'</code> 就能开始搜索。原型界面已经可以看,搜索需要 key。</div>
+      </div>
+
+      <label class="label" for="q">说需求 —— 想吃什么 / 想逛什么</label>
+      <div class="searchrow">
+        <input id="q" class="nk-in-lg" placeholder="例如:烤肉 涩谷" autocomplete="off">
+        <button id="go" class="btn-accent">搜索</button>
+      </div>
+      <div class="chips" id="chips"></div>
+
+      <div id="results"></div>
+    </section>
+
+    <!-- ── ROUTE ────────────────────────────────────────────── -->
+    <section class="panel" id="panel-route">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <span class="count" id="picked-count">已选 0 家</span>
+        <button id="optimize" class="btn-accent" disabled>排出最优路线</button>
+      </div>
+      <div id="map" hidden></div>
+      <div id="route-summary"></div>
+      <div id="picked"></div>
+    </section>
+  </main>
+</div>
+
+<footer>
+  <div class="inner">
+    <span class="count muted" id="foot-count">已选 0 家</span>
+    <button class="btn-outline" id="open-maps" disabled>在 Google 地图打开</button>
+  </div>
+</footer>
+
+<script>
+/* ─────────────────────────────────────────────────────────────────────────
+   Tokyo Trip Planner — prototype
+   Data: Google Maps Platform (Places API New + Directions via JS SDK).
+   Picks are saved on-device (localStorage). Supabase sync can be added later,
+   the same way Bao's Kitchen mirrors its menu.
+   ───────────────────────────────────────────────────────────────────────── */
+const KEY = (window.NIUS_CONFIG && window.NIUS_CONFIG.googleMapsKey) || '';
+const TOKYO = {lat:35.681236, lng:139.767125};   // Tokyo Station — search bias
+const STORE = 'tokyo_trip_picks';
+
+const $ = s => document.querySelector(s);
+const picks = load();
+
+/* ── Google Maps JS loader (official inline bootstrap, runs once) ────────── */
+/* This is Google's dynamic-import bootstrap: it defines
+   google.maps.importLibrary(), which the new Places/Routes libraries need. */
+let _booted = false;
+function google_() {
+  if (!KEY) return Promise.reject(new Error('no-key'));
+  if (!_booted) {
+    _booted = true;
+    ((g)=>{let h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});const d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]+"");for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.${c}apis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})({key:KEY,v:"weekly",language:"zh-CN",region:"JP"});
+  }
+  return google.maps.importLibrary('core'); // resolves once the loader is ready
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────────────── */
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+  document.querySelectorAll('.panel').forEach(p =>
+    p.classList.toggle('on', p.id === 'panel-' + t.dataset.tab));
+  if (t.dataset.tab === 'route') renderPicks();
+});
+
+/* ── Quick intent chips ─────────────────────────────────────────────────── */
+const INTENTS = ['烤肉 涩谷','购物 银座','拉面 新宿','咖啡 表参道','居酒屋 惠比寿','药妆 上野','寿司 筑地','古着 下北泽'];
+$('#chips').innerHTML = INTENTS.map(i => `<button class="chip">${i}</button>`).join('');
+document.querySelectorAll('.chip').forEach(c => c.onclick = () => { $('#q').value = c.textContent; search(); });
+
+/* ── Search (Places API New via JS SDK) ─────────────────────────────────── */
+$('#go').onclick = search;
+$('#q').addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+
+async function search() {
+  const q = $('#q').value.trim();
+  if (!q) return;
+  if (!KEY) { $('#setup').hidden = false; return; }
+
+  const btn = $('#go');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+  $('#results').innerHTML = '<div class="empty">搜索中…</div>';
+  try {
+    await google_();
+    const { Place } = await google.maps.importLibrary('places');
+    const { places } = await Place.searchByText({
+      textQuery: q,
+      fields: ['displayName','formattedAddress','rating','userRatingCount',
+               'priceLevel','regularOpeningHours','location','photos','googleMapsURI','id'],
+      locationBias: { center: TOKYO, radius: 12000 },
+      maxResultCount: 12,
+      language: 'zh-CN', region: 'jp',
+    });
+    renderResults(places || []);
+  } catch (err) {
+    $('#results').innerHTML = `<div class="empty">搜索失败:${err.message}<br><span style="font-size:12px">检查 key 是否有效、Places API (New) 是否已启用、域名限制是否放行了当前地址。</span></div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '搜索';
+  }
+}
+
+const PRICE = { PRICE_LEVEL_INEXPENSIVE:'¥', PRICE_LEVEL_MODERATE:'¥¥', PRICE_LEVEL_EXPENSIVE:'¥¥¥', PRICE_LEVEL_VERY_EXPENSIVE:'¥¥¥¥' };
+
+function renderResults(places) {
+  if (!places.length) { $('#results').innerHTML = '<div class="empty">没找到,换个说法试试</div>'; return; }
+  $('#results').innerHTML = places.map((p, i) => {
+    const name = p.displayName || '未命名';
+    const rate = p.rating ? `<span class="badge rate">★ ${p.rating}</span>` : '';
+    const cnt = p.userRatingCount ? `<span class="muted">(${p.userRatingCount})</span>` : '';
+    const price = p.priceLevel && PRICE[p.priceLevel] ? `<span class="badge price">${PRICE[p.priceLevel]}</span>` : '';
+    let open = '';
+    try { const o = p.regularOpeningHours; if (o && typeof o.isOpen === 'function'){ const now = o.isOpen(); open = now ? '<span class="badge open">营业中</span>' : '<span class="badge shut">已打烊</span>'; } } catch(e){}
+    const photo = (p.photos && p.photos[0]) ? p.photos[0].getURI({ maxWidth:220, maxHeight:220 }) : '';
+    const thumb = photo ? `<img class="thumb" src="${photo}" alt="">` : `<div class="thumb"></div>`;
+    const chosen = picks.some(x => x.id === p.id);
+    window['__p'+i] = p;
+    return `<div class="card">
+      ${thumb}
+      <div class="body">
+        <h3>${name}</h3>
+        <div class="meta">${rate} ${cnt} ${price} ${open}</div>
+        <div class="addr">${p.formattedAddress || ''}</div>
+        <button class="btn-outline add" data-i="${i}" ${chosen?'disabled':''}>${chosen?'已加入':'＋ 加入行程'}</button>
+      </div>
+    </div>`;
+  }).join('');
+  document.querySelectorAll('.add').forEach(b => b.onclick = () => addPick(window['__p'+b.dataset.i], b));
+}
+
+/* ── Picks ──────────────────────────────────────────────────────────────── */
+function addPick(p, btn) {
+  if (picks.some(x => x.id === p.id)) return;
+  picks.push({
+    id: p.id, name: p.displayName, addr: p.formattedAddress || '',
+    lat: p.location.lat(), lng: p.location.lng(), uri: p.googleMapsURI || '',
+  });
+  save();
+  if (btn) { btn.disabled = true; btn.textContent = '已加入'; }
+  updateCounts();
+}
+function removePick(id) { const i = picks.findIndex(x => x.id === id); if (i>-1){ picks.splice(i,1); save(); renderPicks(); } }
+
+function renderPicks() {
+  updateCounts();
+  const el = $('#picked');
+  if (!picks.length) { el.innerHTML = '<div class="empty">还没有选店。<br>去「找店」加几家想去的地方。</div>'; $('#route-summary').innerHTML=''; $('#map').hidden=true; return; }
+  el.innerHTML = picks.map((p,i) => `<div class="stop">
+      <div class="num">${i+1}</div>
+      <div class="info"><h3>${p.name}</h3><div class="leg">${p.addr}</div></div>
+      <button class="rm" data-id="${p.id}">×</button>
+    </div>`).join('');
+  document.querySelectorAll('.rm').forEach(b => b.onclick = () => removePick(b.dataset.id));
+}
+
+function updateCounts() {
+  const n = picks.length;
+  $('#picked-count').textContent = `已选 ${n} 家`;
+  $('#foot-count').textContent = `已选 ${n} 家`;
+  $('#optimize').disabled = n < 2;
+  $('#open-maps').disabled = n < 1;
+}
+
+/* ── Route optimization (Directions via JS SDK) ─────────────────────────── */
+/* optimizeWaypoints supports WALKING/DRIVING/BICYCLING (not TRANSIT), so we
+   optimize the walking order within a district — ideal for a "逛完一片" plan —
+   and the Google Maps link lets you switch to transit for longer hops. */
+$('#optimize').onclick = async () => {
+  if (picks.length < 2) return;
+  const btn = $('#optimize'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+  try {
+    await google_();
+    const { DirectionsService, DirectionsRenderer } = await google.maps.importLibrary('routes');
+    const { Map } = await google.maps.importLibrary('maps');
+    const svc = new DirectionsService();
+    const res = await svc.route({
+      origin: { lat: picks[0].lat, lng: picks[0].lng },
+      destination: { lat: picks[picks.length-1].lat, lng: picks[picks.length-1].lng },
+      waypoints: picks.slice(1, -1).map(p => ({ location:{lat:p.lat,lng:p.lng}, stopover:true })),
+      optimizeWaypoints: true,
+      travelMode: 'WALKING',
+    });
+    // Reorder picks by the optimized waypoint order.
+    const order = res.routes[0].waypoint_order;
+    const middle = order.map(idx => picks[idx + 1]);
+    const reordered = [picks[0], ...middle, picks[picks.length-1]];
+    picks.length = 0; picks.push(...reordered); save();
+
+    const legs = res.routes[0].legs;
+    const totMin = Math.round(legs.reduce((s,l)=>s+l.duration.value,0)/60);
+    const totKm = (legs.reduce((s,l)=>s+l.distance.value,0)/1000).toFixed(1);
+    $('#route-summary').innerHTML = `<div style="border:2px solid var(--color-accent);padding:12px 14px;margin-bottom:14px">
+      <span class="count" style="color:var(--color-accent)">最优步行路线</span><br>
+      <span class="muted">总步行约 ${totMin} 分钟 · ${totKm} km · ${picks.length} 站</span></div>`;
+
+    // Render list with per-leg times + map.
+    renderPicks();
+    document.querySelectorAll('.stop').forEach((s,i) => {
+      if (i>0 && legs[i-1]) {
+        const leg = document.createElement('div'); leg.className='leg';
+        leg.textContent = `↑ 步行 ${legs[i-1].duration.text} · ${legs[i-1].distance.text}`;
+        s.querySelector('.info').appendChild(leg);
+      }
+    });
+    $('#map').hidden = false;
+    const map = new Map($('#map'), { center: TOKYO, zoom: 14, disableDefaultUI:true, zoomControl:true });
+    new DirectionsRenderer({ map }).setDirections(res);
+  } catch (err) {
+    $('#route-summary').innerHTML = `<div class="empty">排线失败:${err.message}</div>`;
+  } finally {
+    btn.disabled = picks.length < 2; btn.textContent = '排出最优路线';
+  }
+};
+
+/* ── Open the whole plan in Google Maps ─────────────────────────────────── */
+$('#open-maps').onclick = () => {
+  if (!picks.length) return;
+  const pts = picks.map(p => `${p.lat},${p.lng}`);
+  const origin = pts[0], destination = pts[pts.length-1];
+  const way = pts.slice(1,-1).join('|');
+  let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=transit`;
+  if (way) url += `&waypoints=${encodeURIComponent(way)}`;
+  window.open(url, '_blank');
+};
+
+/* ── Storage ────────────────────────────────────────────────────────────── */
+function load(){ try { return JSON.parse(localStorage.getItem(STORE)) || []; } catch(e){ return []; } }
+function save(){ localStorage.setItem(STORE, JSON.stringify(picks)); }
+
+/* ── Init ───────────────────────────────────────────────────────────────── */
+if (!KEY) $('#setup').hidden = false;
+updateCounts();
+</script>
+</body>
+</html>

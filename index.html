@@ -165,6 +165,39 @@ button{font-family:inherit}
      otherwise win and leave their buttons under the home indicator. */
   .sheet-safe{padding-bottom:max(22px,calc(env(safe-area-inset-bottom) + 14px))!important}
 }
+
+/* ── Trip planner ───────────────────────────────────────────────────────── */
+.tv-subtabs{display:flex;gap:0;border-bottom:2px solid var(--color-text);margin-bottom:16px}
+.tv-subtab{flex:1;background:none;border:0;padding:11px 0;cursor:pointer;font-family:var(--font-heading);
+  font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase;
+  color:color-mix(in srgb,var(--color-text) 52%,transparent);border-bottom:3px solid transparent;margin-bottom:-2px}
+.tv-subtab.on{color:var(--color-text);border-bottom-color:var(--color-accent)}
+.tv-searchrow{display:flex;gap:9px;margin-bottom:12px}
+.tv-searchrow .nk-in-lg{flex:1}
+.tv-chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:16px}
+.tv-card{border:2px solid var(--color-text);background:var(--color-bg);margin-bottom:11px;display:flex;overflow:hidden}
+.tv-thumb{width:96px;flex:none;background:var(--color-surface);object-fit:cover;align-self:stretch}
+.tv-body{flex:1;padding:11px 13px;min-width:0}
+.tv-body h3{font-size:16px;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tv-meta{font-size:12px;margin-bottom:6px;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.tv-addr{font-size:12px;color:color-mix(in srgb,var(--color-text) 55%,transparent);
+  overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin-bottom:9px}
+.tv-badge{display:inline-block;font-family:var(--font-heading);font-weight:800;font-size:11px;letter-spacing:.02em;padding:2px 6px}
+.tv-badge.rate{background:var(--color-text);color:#fff}
+.tv-badge.open{color:#0a7d34;border:1.5px solid #0a7d34}
+.tv-badge.shut{color:#b3261e;border:1.5px solid #b3261e}
+.tv-badge.price{border:1.5px solid var(--color-divider)}
+.tv-stop{display:flex;align-items:flex-start;gap:11px;border:2px solid var(--color-text);background:var(--color-bg);padding:11px 13px;margin-bottom:9px}
+.tv-num{flex:none;width:26px;height:26px;background:var(--color-accent);color:#fff;
+  font-family:var(--font-heading);font-weight:800;display:flex;align-items:center;justify-content:center}
+.tv-stop .info{flex:1;min-width:0}
+.tv-stop .info h3{font-size:15px}
+.tv-leg{font-size:12px;color:color-mix(in srgb,var(--color-text) 60%,transparent);margin-top:3px}
+.tv-rm{background:none;border:0;color:var(--color-accent);font-weight:800;cursor:pointer;font-size:22px;line-height:1;padding:0 2px}
+.tv-empty{text-align:center;padding:40px 18px;color:color-mix(in srgb,var(--color-text) 52%,transparent);font-weight:600}
+.tv-spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tv-note{border:2px solid var(--color-accent);padding:11px 13px;margin-bottom:14px;font-size:13px}
 </style>
 </head>
 <body>
@@ -274,6 +307,20 @@ const state = {
   form: { name:'', en:'', cat:'Soup', time:'', kcal:'', ingredients:[{name:'',qty:'',unit:''}] },
   decideOpen: false,       // "what should we eat?" sheet
   pick: [],                // current suggestion (recipe ids)
+
+  // ── Trip planner ──────────────────────────────────────────────────────
+  travelTab: 'find',       // find | stay | route
+  travelQuery: '',         // intent search box
+  travelResults: [],       // plain objects mapped from Google Places
+  travelPicks: [],         // chosen spots {id,name,addr,lat,lng,uri,day}
+  travelBusy: false,       // a Google request is in flight
+  travelError: null,       // last error message, or null
+  travelDay: 1,            // active day — also the target day for new picks
+  travelDayCount: 1,       // how many days the trip spans
+  travelRoutes: {},        // day -> {mins,km,arrive,ret,viaHotel} after optimizing
+  travelHotel: null,       // chosen lodging {id,name,addr,lat,lng,uri}
+  travelStayQuery: '',     // hotel search box
+  travelStayResults: [],   // hotel search results (plain objects, +dist)
 };
 
 const blankForm = () => ({ name:'', en:'', cat:'Soup', time:'', kcal:'', ingredients:[{ name:'', qty:'', unit:'' }] });
@@ -421,15 +468,32 @@ let syncState = cloudConfigured ? 'connecting' : 'local';
 // Snapshot of what the server last agreed with, used to work out which
 // fields this device has changed. Avoids pushing (and clobbering) fields
 // the other person edited.
-const lastSynced = { recipes:null, cart:null, checked:null, categories:null, staples:null };
-const SYNC_FIELDS = ['recipes', 'cart', 'checked', 'categories', 'staples'];
+const lastSynced = { recipes:null, cart:null, checked:null, categories:null, staples:null, trip:null };
+const SYNC_FIELDS = ['recipes', 'cart', 'checked', 'categories', 'staples', 'trip'];
 
-/* `categories` and `staples` are newer columns. Where the database predates
-   them, sync everything else rather than failing every write — those two then
-   stay on this device until supabase-upgrade.sql is run. */
-const OPTIONAL_COLUMNS = ['categories', 'staples'];
-const columnOk = { categories:true, staples:true };
+/* `categories`, `staples` and `trip` are newer columns. Where the database
+   predates them, sync everything else rather than failing every write — those
+   then stay on this device until supabase-upgrade.sql is run. */
+const OPTIONAL_COLUMNS = ['categories', 'staples', 'trip'];
+const columnOk = { categories:true, staples:true, trip:true };
 const syncable = () => SYNC_FIELDS.filter(f => !OPTIONAL_COLUMNS.includes(f) || columnOk[f]);
+
+/* Most fields map 1:1 to a state key. `trip` is different: it's a bundle
+   assembled from several state keys, so it reads/writes through these. */
+function fieldVal(f){ return f === 'trip' ? tripBundle() : state[f]; }
+function setField(f, v){ if(f === 'trip') applyTripBundle(v); else state[f] = v; }
+
+/* Regular fields keep the server object as-is (`state[f] = row[f]`), so plain
+   JSON.stringify compares consistently. `trip` is rebuilt from scratch each read,
+   so its key order won't match the server's jsonb (Postgres reorders keys) — a
+   plain compare would flag it dirty forever. Serialize it with sorted keys so the
+   comparison is order-independent. */
+function stableStringify(v){
+  if(Array.isArray(v)) return '[' + v.map(stableStringify).join(',') + ']';
+  if(v && typeof v === 'object') return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
+  return JSON.stringify(v);
+}
+function serialize(f, v){ return f === 'trip' ? stableStringify(v) : JSON.stringify(v); }
 
 function setSync(s){
   if(syncState === s) return;
@@ -463,7 +527,7 @@ async function resolveHousehold(){
     if(prev !== FIXED_HOUSE){
       // Switching onto the shared kitchen — the cloud row is the truth, so
       // don't push this device's local copy over it.
-      SYNC_FIELDS.forEach(f => { lastSynced[f] = JSON.stringify(state[f]); });
+      SYNC_FIELDS.forEach(f => { lastSynced[f] = serialize(f, fieldVal(f)); });
     }
     return FIXED_HOUSE;
   }
@@ -474,7 +538,7 @@ async function resolveHousehold(){
   if(fromLink && fromLink !== stored){
     persistHousehold(fromLink);
     // Joining someone else's kitchen: their data wins, so don't push ours over it.
-    SYNC_FIELDS.forEach(f => { lastSynced[f] = JSON.stringify(state[f]); });
+    SYNC_FIELDS.forEach(f => { lastSynced[f] = serialize(f, fieldVal(f)); });
     return fromLink;
   }
   const id = stored || newHouseholdId();
@@ -483,7 +547,7 @@ async function resolveHousehold(){
 }
 
 function dirtyFields(){
-  return syncable().filter(f => JSON.stringify(state[f]) !== lastSynced[f]);
+  return syncable().filter(f => serialize(f, fieldVal(f)) !== lastSynced[f]);
 }
 
 /* An unreachable host hangs rather than failing, which would leave the status
@@ -513,8 +577,8 @@ async function flush(){
   const patch = { id: household, updated_at: new Date().toISOString() };
   const snapshot = {};
   fields.forEach(f => {
-    patch[f] = state[f];
-    snapshot[f] = JSON.stringify(state[f]);
+    patch[f] = fieldVal(f);
+    snapshot[f] = serialize(f, fieldVal(f));
   });
 
   let error;
@@ -541,9 +605,9 @@ function applyRemote(row){
     if(row[f] == null) return;
     if(f === 'categories' && (!Array.isArray(row[f]) || !row[f].length)) return;
     if(f === 'staples' && !Array.isArray(row[f])) return;
-    const incoming = JSON.stringify(row[f]);
+    const incoming = serialize(f, row[f]);
     if(incoming === lastSynced[f]) return;  // nothing new
-    state[f] = row[f];
+    setField(f, row[f]);
     lastSynced[f] = incoming;
     changed = true;
   });
@@ -568,7 +632,7 @@ async function pull(){
   }
   applyRemote(data);
   syncable().forEach(f => {
-    if(data[f] != null && !dirtyFields().includes(f)) lastSynced[f] = JSON.stringify(state[f]);
+    if(data[f] != null && !dirtyFields().includes(f)) lastSynced[f] = serialize(f, fieldVal(f));
   });
   await flush();
 }
@@ -656,7 +720,7 @@ async function joinHousehold(raw){
   persistHousehold(id);
   // Treat the other phone as the source of truth, so nothing local is pushed
   // over the kitchen we are joining.
-  SYNC_FIELDS.forEach(f => { lastSynced[f] = JSON.stringify(state[f]); });
+  SYNC_FIELDS.forEach(f => { lastSynced[f] = JSON.stringify(fieldVal(f)); });
   state.pairOpen = false;
   state.pairCode = '';
   saveLocal();
@@ -964,6 +1028,7 @@ const ICON = {
   dice: w => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor"/></svg>`,
   pencil: w => `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>`,
   check: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+  travel: `<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-5.7-7-11a7 7 0 0 1 14 0c0 5.3-7 11-7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>`,
 };
 
 /* ── Mascots ────────────────────────────────────────────────────────────
@@ -1036,6 +1101,7 @@ const TITLES = {
   order: ['Your Order',    'Adjust portions, then send.'],
   list:  ['Shopping List', 'For Bao to buy.'],
   add:   ['New Dish',      'Add it to the menu.'],
+  travel:['Tokyo Trip',    'Find spots, plan the walk.'],
 };
 
 function renderHeader(){
@@ -1534,6 +1600,466 @@ function renderAdd(){
 }
 
 /* ── Tab bar ────────────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Trip planner — Google Places (New) search + Directions route optimization.
+   Picks persist to their own localStorage key, separate from the menu's cloud
+   sync. The live map is intentionally left out here: the whole #scroll column
+   is rebuilt on every action, which a live Google map doesn't survive. The
+   "Open in Google Maps" button hands the full route to Maps for navigation.
+   ═══════════════════════════════════════════════════════════════════════ */
+const GKEY = CLOUD.googleMapsKey || '';
+const TRAVEL_KEY = 'tokyo_trip_picks';
+const TOKYO = { lat:35.681236, lng:139.767125 };   // Tokyo Station — search bias
+const TRAVEL_INTENTS = ['烤肉 涩谷','购物 银座','拉面 新宿','咖啡 表参道','居酒屋 惠比寿','药妆 上野','寿司 筑地','古着 下北泽'];
+const TRAVEL_PRICE = { PRICE_LEVEL_INEXPENSIVE:'¥', PRICE_LEVEL_MODERATE:'¥¥', PRICE_LEVEL_EXPENSIVE:'¥¥¥', PRICE_LEVEL_VERY_EXPENSIVE:'¥¥¥¥' };
+
+function loadTravel(){
+  try{
+    const raw = JSON.parse(localStorage.getItem(TRAVEL_KEY));
+    if(!raw) return;
+    if(Array.isArray(raw)){                       // v1 — a bare picks array
+      state.travelPicks = raw.map(p => ({ ...p, day: p.day || 1 }));
+    }else{
+      if(Array.isArray(raw.picks)) state.travelPicks = raw.picks.map(p => ({ ...p, day: p.day || 1 }));
+      if(raw.dayCount)  state.travelDayCount = Math.max(1, raw.dayCount);
+      if(raw.day)       state.travelDay = raw.day;
+      if(raw.hotel)     state.travelHotel = raw.hotel;
+      if(raw.routes && typeof raw.routes === 'object') state.travelRoutes = raw.routes;
+    }
+    // Never let a pick sit on a day the selector can't reach.
+    state.travelPicks.forEach(p => { if(p.day > state.travelDayCount) state.travelDayCount = p.day; });
+    if(state.travelDay > state.travelDayCount) state.travelDay = 1;
+  }catch(e){}
+}
+function saveTravelLocal(){
+  try{
+    localStorage.setItem(TRAVEL_KEY, JSON.stringify({
+      v:2, picks:state.travelPicks, day:state.travelDay, dayCount:state.travelDayCount,
+      hotel:state.travelHotel, routes:state.travelRoutes,
+    }));
+  }catch(e){}
+}
+// Persist to this device AND queue a cloud push, so the other phone catches up —
+// same local-first path the menu uses via save().
+function saveTravel(){ saveTravelLocal(); scheduleFlush(); }
+
+/* What actually syncs between phones: the plan itself. Which day you're
+   currently viewing (travelDay) is a per-device UI bit and stays local. */
+function tripBundle(){
+  return { picks:state.travelPicks, dayCount:state.travelDayCount, hotel:state.travelHotel, routes:state.travelRoutes };
+}
+function applyTripBundle(b){
+  if(!b || typeof b !== 'object') return;
+  if(Array.isArray(b.picks)) state.travelPicks = b.picks.map(p => ({ ...p, day:p.day || 1 }));
+  if(b.dayCount) state.travelDayCount = Math.max(1, b.dayCount);
+  state.travelHotel = b.hotel || null;
+  state.travelRoutes = (b.routes && typeof b.routes === 'object') ? b.routes : {};
+  state.travelPicks.forEach(p => { if(p.day > state.travelDayCount) state.travelDayCount = p.day; });
+  if(state.travelDay > state.travelDayCount) state.travelDay = 1;
+  saveTravelLocal();          // mirror to the device — but don't re-flush; this came FROM sync
+}
+
+/* ── Geometry helpers (no API needed) ───────────────────────────────────── */
+function travelCentroid(picks){
+  if(!picks.length) return TOKYO;
+  const s = picks.reduce((a, p) => ({ lat:a.lat + p.lat, lng:a.lng + p.lng }), { lat:0, lng:0 });
+  return { lat: s.lat / picks.length, lng: s.lng / picks.length };
+}
+function kmBetween(a, b){
+  const R = 6371, d = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * d, dLng = (b.lng - a.lng) * d;
+  const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*d) * Math.cos(b.lat*d) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.asin(Math.min(1, Math.sqrt(x)));
+}
+function picksForDay(day){ return state.travelPicks.filter(p => (p.day || 1) === day); }
+function invalidateRoute(day){ if(day == null) state.travelRoutes = {}; else delete state.travelRoutes[day]; }
+
+/* Google's official inline bootstrap loader — defines google.maps.importLibrary,
+   which the new Places/Routes libraries require. Runs at most once. */
+let _gBooted = false;
+function google_(){
+  if(!GKEY) return Promise.reject(new Error('no-key'));
+  if(!_gBooted){
+    _gBooted = true;
+    ((g)=>{let h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});const d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]+"");for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.${c}apis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})({key:GKEY,v:"weekly",language:"zh-CN",region:"JP"});
+  }
+  return google.maps.importLibrary('core');
+}
+
+/* Flatten a Google Place into a plain, serializable object so the state-driven
+   renderer can redraw it without holding live SDK objects. */
+function mapPlace(p){
+  let open = null;
+  try{ const o = p.regularOpeningHours; if(o && typeof o.isOpen === 'function') open = o.isOpen(); }catch(e){}
+  const photo = (p.photos && p.photos[0]) ? p.photos[0].getURI({ maxWidth:200, maxHeight:200 }) : '';
+  return {
+    id: p.id, name: p.displayName || '未命名', addr: p.formattedAddress || '',
+    rating: p.rating || null, count: p.userRatingCount || null,
+    price: (p.priceLevel && TRAVEL_PRICE[p.priceLevel]) || '', open, photo,
+    lat: p.location.lat(), lng: p.location.lng(), uri: p.googleMapsURI || '',
+  };
+}
+
+async function travelSearch(){
+  const q = (state.travelQuery || '').trim();
+  if(!q || state.travelBusy) return;
+  if(!GKEY){ state.travelError = 'no-key'; return; }
+  state.travelBusy = true; state.travelError = null;
+  try{
+    await google_();
+    const { Place } = await google.maps.importLibrary('places');
+    const { places } = await Place.searchByText({
+      textQuery: q,
+      fields: ['id','displayName','formattedAddress','rating','userRatingCount',
+               'priceLevel','regularOpeningHours','location','photos','googleMapsURI'],
+      locationBias: { center: TOKYO, radius: 12000 },
+      maxResultCount: 12, language: 'zh-CN', region: 'jp',
+    });
+    state.travelResults = (places || []).map(mapPlace);
+  }catch(err){
+    state.travelError = err.message || String(err);
+    state.travelResults = [];
+  }finally{
+    state.travelBusy = false;
+    render();
+  }
+}
+
+function travelAddPick(o){
+  if(state.travelPicks.some(x => x.id === o.id)) return;
+  const day = state.travelDay;
+  state.travelPicks.push({ id:o.id, name:o.name, addr:o.addr, lat:o.lat, lng:o.lng, uri:o.uri, day });
+  invalidateRoute(day);       // the day's order changed — its route no longer applies
+  saveTravel();
+}
+function travelRemovePick(id){
+  const i = state.travelPicks.findIndex(x => x.id === id);
+  if(i > -1){ const d = state.travelPicks[i].day || 1; state.travelPicks.splice(i, 1); invalidateRoute(d); saveTravel(); }
+}
+function travelMoveDay(id){
+  const p = state.travelPicks.find(x => x.id === id);
+  if(!p) return;
+  const from = p.day || 1;
+  const to = (from % state.travelDayCount) + 1;   // cycle 1→2→…→N→1
+  p.day = to;
+  invalidateRoute(from); invalidateRoute(to);
+  saveTravel();
+}
+function travelAddDay(){ state.travelDayCount++; state.travelDay = state.travelDayCount; saveTravel(); }
+function travelSetDay(day){ state.travelDay = day; saveTravel(); }
+function travelSetHotel(o){
+  state.travelHotel = { id:o.id, name:o.name, addr:o.addr, lat:o.lat, lng:o.lng, uri:o.uri };
+  invalidateRoute();          // hotel is the start/end of every day — all routes stale
+  saveTravel();
+}
+function travelClearHotel(){ state.travelHotel = null; invalidateRoute(); saveTravel(); }
+
+/* Plan one day. Google can't optimize a TRANSIT route's stop order, so we do it
+   in two passes: (1) a single WALKING optimize just to pick a sensible visiting
+   ORDER within the day, then (2) a real PUBLIC-TRANSIT time for each hop in that
+   order. Short hops naturally come back as walking — same as Google Maps. With a
+   hotel set, the loop starts and ends at the hotel; otherwise first→last. */
+async function travelOptimize(){
+  const day = state.travelDay;
+  const dayPicks = picksForDay(day);
+  const hotel = state.travelHotel;
+  const need = hotel ? 1 : 2;
+  if(dayPicks.length < need || state.travelBusy) return;
+  state.travelBusy = true; state.travelError = null;
+  try{
+    await google_();
+    const { DirectionsService } = await google.maps.importLibrary('routes');
+    const svc = new DirectionsService();
+
+    // Pass 1 — decide the order by walking distance.
+    let origin, destination, waypoints;
+    if(hotel){
+      origin = destination = { lat:hotel.lat, lng:hotel.lng };
+      waypoints = dayPicks.map(p => ({ location:{lat:p.lat,lng:p.lng}, stopover:true }));
+    }else{
+      origin = { lat:dayPicks[0].lat, lng:dayPicks[0].lng };
+      destination = { lat:dayPicks[dayPicks.length-1].lat, lng:dayPicks[dayPicks.length-1].lng };
+      waypoints = dayPicks.slice(1, -1).map(p => ({ location:{lat:p.lat,lng:p.lng}, stopover:true }));
+    }
+    const opt = await svc.route({ origin, destination, waypoints, optimizeWaypoints:true, travelMode:'WALKING' });
+    const order = opt.routes[0].waypoint_order;
+    const reordered = hotel
+      ? order.map(i => dayPicks[i])
+      : [dayPicks[0], ...order.map(i => dayPicks[i + 1]), dayPicks[dayPicks.length - 1]];
+
+    // Rebuild the flat list: other days untouched, this day in optimized order.
+    state.travelPicks = [...state.travelPicks.filter(p => (p.day || 1) !== day), ...reordered];
+
+    // Pass 2 — real transit time for each consecutive hop, in parallel.
+    const seq = hotel ? [hotel, ...reordered, hotel] : reordered;
+    const pairs = [];
+    for(let i = 0; i < seq.length - 1; i++) pairs.push([seq[i], seq[i + 1]]);
+    const legs = await Promise.all(pairs.map(([a, b]) => legInfo(svc, a, b)));
+
+    const arrive = hotel ? legs.slice(0, reordered.length) : [null, ...legs];
+    const ret = hotel ? (legs[reordered.length] || null) : null;
+    state.travelRoutes = { ...state.travelRoutes, [day]: {
+      mins: Math.round(legs.reduce((s,l)=>s+l.s,0)/60),
+      arrive, ret, viaHotel: !!hotel,
+      approx: legs.some(l => l.mode === 'drive'),   // some hop used the driving proxy
+    } };
+    saveTravel();
+  }catch(err){
+    state.travelError = err.message || String(err);
+  }finally{
+    state.travelBusy = false;
+    render();
+  }
+}
+
+/* One hop's realistic time. Prefer real public transit; if the API returns no
+   transit schedule for the chosen date (Google only publishes timetables a few
+   months out — a future trip date can fall past that window), don't fall back to
+   an absurd cross-city WALK: walk only genuinely short hops, and use DRIVING time
+   as a sane proxy for the longer ones. `mode` records which won. On the real
+   trip date, transit resolves and every hop shows 🚃. */
+const WALK_OK_S = 18 * 60;   // ≤18 min on foot is a real walk, not a fallback
+async function legInfo(svc, a, b){
+  const base = { origin:{ lat:a.lat, lng:a.lng }, destination:{ lat:b.lat, lng:b.lng } };
+  const one = async (opts) => {
+    const r = await svc.route({ ...base, ...opts });
+    const leg = r.routes[0].legs[0];
+    return { dur:leg.duration.text, dist:leg.distance.text, s:leg.duration.value, steps:leg.steps || [] };
+  };
+  // 1) Real transit.
+  try{
+    const l = await one({ travelMode:'TRANSIT', transitOptions:{ departureTime:new Date() } });
+    const isTransit = l.steps.some(s => (s.travel_mode || s.travelMode) === 'TRANSIT');
+    return { dur:l.dur, dist:l.dist, s:l.s, mode: isTransit ? 'transit' : 'walk' };
+  }catch(e){}
+  // 2) Walk — but only keep it if the hop is genuinely short.
+  let walk = null;
+  try{ walk = await one({ travelMode:'WALKING' }); }catch(e){}
+  if(walk && walk.s <= WALK_OK_S) return { dur:walk.dur, dist:walk.dist, s:walk.s, mode:'walk' };
+  // 3) Long hop, no transit data → driving time as a proxy.
+  try{ const d = await one({ travelMode:'DRIVING' }); return { dur:d.dur, dist:d.dist, s:d.s, mode:'drive' }; }catch(e){}
+  return walk ? { dur:walk.dur, dist:walk.dist, s:walk.s, mode:'walk' } : { dur:'—', dist:'', s:0, mode:'walk' };
+}
+
+function travelOpenMaps(){
+  const day = state.travelDay;
+  const dayPicks = picksForDay(day);
+  if(!dayPicks.length) return;
+  const hotel = state.travelHotel;
+  const pts = dayPicks.map(p => `${p.lat},${p.lng}`);
+  let origin, destination, way;
+  if(hotel){ const h = `${hotel.lat},${hotel.lng}`; origin = h; destination = h; way = pts.join('|'); }
+  else{ origin = pts[0]; destination = pts[pts.length-1]; way = pts.slice(1, -1).join('|'); }
+  let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=transit`;
+  if(way) url += `&waypoints=${encodeURIComponent(way)}`;
+  window.open(url, '_blank');
+}
+
+/* ── Lodging (住哪里) ────────────────────────────────────────────────────── */
+async function travelStaySearch(){
+  const q = (state.travelStayQuery || '').trim();
+  if(!q || state.travelBusy) return;
+  if(!GKEY){ state.travelError = 'no-key'; return; }
+  await staySearch(q, null);
+}
+async function travelRecommendStay(){
+  if(!state.travelPicks.length || state.travelBusy) return;
+  if(!GKEY){ state.travelError = 'no-key'; return; }
+  await staySearch('酒店 hotel', travelCentroid(state.travelPicks));
+}
+async function staySearch(query, center){
+  state.travelBusy = true; state.travelError = null;
+  const c = center || (state.travelPicks.length ? travelCentroid(state.travelPicks) : TOKYO);
+  try{
+    await google_();
+    const { Place } = await google.maps.importLibrary('places');
+    const { places } = await Place.searchByText({
+      textQuery: query,
+      fields: ['id','displayName','formattedAddress','rating','userRatingCount','priceLevel','location','photos','googleMapsURI'],
+      includedType: 'lodging',
+      locationBias: { center: c, radius: center ? 2500 : 6000 },
+      maxResultCount: 12, language: 'zh-CN', region: 'jp',
+    });
+    const cen = state.travelPicks.length ? travelCentroid(state.travelPicks) : null;
+    state.travelStayResults = (places || []).map(mapPlace).map(o => ({ ...o, dist: cen ? kmBetween(o, cen) : null }));
+    if(cen) state.travelStayResults.sort((a,b) => a.dist - b.dist);   // nearest to your spots first
+  }catch(err){
+    state.travelError = err.message || String(err);
+    state.travelStayResults = [];
+  }finally{
+    state.travelBusy = false;
+    render();
+  }
+}
+
+function renderTravel(){
+  const t = state.travelTab;
+  const subtab = (key, label) => `<button class="tv-subtab ${t===key?'on':''}" data-act="travelTab" data-tab="${key}">${label}</button>`;
+  let body;
+  if(t === 'stay') body = renderTravelStay();
+  else if(t === 'route') body = renderTravelRoute();
+  else body = renderTravelFind();
+  return `<div class="tv-subtabs">${subtab('find','找店')}${subtab('stay','住宿')}${subtab('route','排路线')}</div>${body}`;
+}
+
+/* Day chips — the single source of truth for state.travelDay, shared by the
+   Find tab (which day new picks land on) and the Route tab (which day to view). */
+function renderDaySelector(prefix){
+  let chips = '';
+  for(let d = 1; d <= state.travelDayCount; d++){
+    const on = d === state.travelDay;
+    chips += `<button class="chip" data-act="travelSetDay" data-day="${d}" style="${on?'border-color:var(--color-accent);color:var(--color-accent);':''}">Day ${d}</button>`;
+  }
+  chips += `<button class="chip" data-act="travelAddDay">＋ 天</button>`;
+  return `<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:14px;">
+    <span class="muted" style="font-size:12px;font-weight:700;">${prefix}</span>${chips}</div>`;
+}
+
+function travelError_(){
+  return (state.travelError && state.travelError !== 'no-key')
+    ? `<div class="tv-empty">请求失败:${esc(state.travelError)}<br><span style="font-size:12px">检查 key、Places API (New) 是否启用、域名限制是否放行当前地址。</span></div>`
+    : '';
+}
+
+function renderTravelFind(){
+  if(!GKEY){
+    return `<div class="tv-note">还没连上 Google。在 <b>config.js</b> 里加一行 <b>googleMapsKey</b> 就能搜索。</div>`;
+  }
+  const chips = TRAVEL_INTENTS.map(i => `<button class="chip" data-act="travelChip" data-q="${esc(i)}">${esc(i)}</button>`).join('');
+  const btn = state.travelBusy
+    ? `<button class="btn-accent" disabled><span class="tv-spin"></span></button>`
+    : `<button class="btn-accent" data-act="travelSearch">搜索</button>`;
+  let results;
+  if(travelError_()){
+    results = travelError_();
+  }else if(state.travelBusy){
+    results = `<div class="tv-empty">搜索中…</div>`;
+  }else if(!state.travelResults.length){
+    results = `<div class="tv-empty">说个需求,例如「烤肉 涩谷」「购物 银座」。</div>`;
+  }else{
+    results = state.travelResults.map((r, i) => {
+      const rate = r.rating ? `<span class="tv-badge rate">★ ${r.rating}</span>` : '';
+      const cnt = r.count ? `<span class="muted">(${r.count})</span>` : '';
+      const price = r.price ? `<span class="tv-badge price">${r.price}</span>` : '';
+      const open = r.open === true ? `<span class="tv-badge open">营业中</span>` : r.open === false ? `<span class="tv-badge shut">已打烊</span>` : '';
+      const thumb = r.photo ? `<img class="tv-thumb" src="${r.photo}" alt="">` : `<div class="tv-thumb"></div>`;
+      const chosen = state.travelPicks.some(x => x.id === r.id);
+      return `<div class="tv-card">${thumb}
+        <div class="tv-body">
+          <h3>${esc(r.name)}</h3>
+          <div class="tv-meta">${rate} ${cnt} ${price} ${open}</div>
+          <div class="tv-addr">${esc(r.addr)}</div>
+          <button class="btn-outline" data-act="travelAdd" data-i="${i}" ${chosen?'disabled':''} style="padding:9px 13px;">${chosen?'已加入':'＋ 加入 Day ' + state.travelDay}</button>
+        </div></div>`;
+    }).join('');
+  }
+  return `
+    ${renderDaySelector('新地点加到:')}
+    <label class="label">说需求 —— 想吃什么 / 想逛什么</label>
+    <div class="tv-searchrow">
+      <input class="nk-in-lg" data-inp="travelQuery" value="${esc(state.travelQuery)}" placeholder="例如:烤肉 涩谷" autocomplete="off">
+      ${btn}
+    </div>
+    <div class="tv-chips">${chips}</div>
+    ${results}`;
+}
+
+function renderTravelStay(){
+  if(!GKEY){
+    return `<div class="tv-note">还没连上 Google。在 <b>config.js</b> 里加一行 <b>googleMapsKey</b> 就能搜索。</div>`;
+  }
+  const h = state.travelHotel;
+  const banner = h ? `<div class="tv-note" style="border-color:var(--color-text);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+      <div><span class="muted" style="font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;">住宿</span><br>
+        <b>${esc(h.name)}</b><br><span class="muted" style="font-size:12px;">${esc(h.addr)}</span></div>
+      <button class="tv-rm" data-act="travelClearHotel" title="取消">×</button></div>` : '';
+  const btn = state.travelBusy
+    ? `<button class="btn-accent" disabled><span class="tv-spin"></span></button>`
+    : `<button class="btn-accent" data-act="travelStaySearch">搜索</button>`;
+  const canRec = state.travelPicks.length > 0;
+  const recBtn = `<button class="btn-outline btn-wide" data-act="travelRecommendStay" ${canRec?'':'disabled'} style="margin-bottom:16px;${canRec?'':'opacity:.4;'}">✦ 按我选的店推荐附近住宿</button>`;
+  let results;
+  if(travelError_()){
+    results = travelError_();
+  }else if(state.travelBusy){
+    results = `<div class="tv-empty">搜索中…</div>`;
+  }else if(!state.travelStayResults.length){
+    results = `<div class="tv-empty">搜酒店区域(如「新宿 酒店」),或用上面的按钮按你选的店推荐。</div>`;
+  }else{
+    results = state.travelStayResults.map((r, i) => {
+      const rate = r.rating ? `<span class="tv-badge rate">★ ${r.rating}</span>` : '';
+      const cnt = r.count ? `<span class="muted">(${r.count})</span>` : '';
+      const price = r.price ? `<span class="tv-badge price">${r.price}</span>` : '';
+      const dist = (r.dist != null) ? `<span class="tv-badge price">距你的店约 ${r.dist.toFixed(1)} km</span>` : '';
+      const thumb = r.photo ? `<img class="tv-thumb" src="${r.photo}" alt="">` : `<div class="tv-thumb"></div>`;
+      const chosen = h && h.id === r.id;
+      return `<div class="tv-card">${thumb}
+        <div class="tv-body">
+          <h3>${esc(r.name)}</h3>
+          <div class="tv-meta">${rate} ${cnt} ${price} ${dist}</div>
+          <div class="tv-addr">${esc(r.addr)}</div>
+          <button class="btn-outline" data-act="travelSetStay" data-i="${i}" ${chosen?'disabled':''} style="padding:9px 13px;">${chosen?'已选为住宿':'选为住宿'}</button>
+        </div></div>`;
+    }).join('');
+  }
+  return `${banner}
+    <label class="label">住哪里 —— 搜区域或酒店名</label>
+    <div class="tv-searchrow">
+      <input class="nk-in-lg" data-inp="travelStayQuery" value="${esc(state.travelStayQuery)}" placeholder="例如:新宿 酒店" autocomplete="off">
+      ${btn}
+    </div>
+    ${recBtn}
+    ${results}`;
+}
+
+function renderTravelRoute(){
+  const day = state.travelDay;
+  const dayPicks = picksForDay(day);
+  const n = dayPicks.length;
+  const hotel = state.travelHotel;
+  const need = hotel ? 1 : 2;
+  const optBtn = state.travelBusy
+    ? `<button class="btn-accent" disabled><span class="tv-spin"></span></button>`
+    : `<button class="btn-accent" data-act="travelOptimize" ${n<need?'disabled':''} style="${n<need?'opacity:.4;':''}">排出最优路线</button>`;
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <span style="font-family:var(--font-heading);font-weight:800;font-size:12px;letter-spacing:.06em;text-transform:uppercase;">Day ${day} · ${n} 家</span>
+      ${optBtn}</div>`;
+  const hotelLine = hotel
+    ? `<div class="muted" style="font-size:12px;margin-bottom:12px;">从 <b>${esc(hotel.name)}</b> 出发,逛完回酒店。</div>`
+    : `<div class="muted" style="font-size:12px;margin-bottom:12px;">在「住宿」选个酒店,路线就会从酒店出发绕一圈回来。</div>`;
+  const selector = renderDaySelector('查看:');
+  if(!n){
+    return selector + head + hotelLine + `<div class="tv-empty">Day ${day} 还没有店。<br>去「找店」加几家(会加到当前选中的这天)。</div>`;
+  }
+  const route = state.travelRoutes[day];
+  const LEG_ICON = { transit:'🚃 电车', drive:'🚗 车程约', walk:'🚶 步行' };
+  const legLabel = l => `${LEG_ICON[l.mode] || '🚶 步行'} ${l.dur}${l.dist ? ' · ' + l.dist : ''}`;
+  const approxNote = (route && route.approx)
+    ? `<br><span class="muted" style="font-size:11px;">部分路段暂无电车班次数据(所选日期超出时刻表范围),已用车程估算;真实出行日期会自动显示电车。</span>`
+    : '';
+  const summary = route
+    ? `<div class="tv-note"><span style="font-family:var(--font-heading);font-weight:800;color:var(--color-accent);">公共交通路线</span><br>
+        <span class="muted">总用时约 ${route.mins} 分钟 · ${n} 站${route.viaHotel?' · 含往返酒店':''}</span>${approxNote}</div>`
+    : '';
+  const arrive = route ? route.arrive : null;
+  const moveBtn = state.travelDayCount > 1
+    ? id => `<button class="chip" data-act="travelMoveDay" data-id="${esc(id)}" style="margin-top:6px;">移到别天 ⇄</button>`
+    : () => '';
+  const stops = dayPicks.map((p, i) => {
+    const leg = (arrive && arrive[i]) ? `<div class="tv-leg">↑ ${legLabel(arrive[i])}</div>` : '';
+    return `<div class="tv-stop">
+        <div class="tv-num">${i+1}</div>
+        <div class="info"><h3>${esc(p.name)}</h3><div class="tv-leg">${esc(p.addr)}</div>${leg}${moveBtn(p.id)}</div>
+        <button class="tv-rm" data-act="travelRemove" data-id="${esc(p.id)}">×</button>
+      </div>`;
+  }).join('');
+  const retLine = (route && route.ret)
+    ? `<div class="tv-leg" style="margin:2px 0 12px 37px;">↩ 回酒店 ${legLabel(route.ret)}</div>`
+    : '';
+  const openBtn = `<button class="btn-outline btn-wide" data-act="travelOpenMaps" style="margin-top:6px;">在 Google 地图打开 Day ${day}(电车导航)</button>`;
+  return selector + head + hotelLine + summary + stops + retLine + openBtn;
+}
+
 function renderTabs(){
   const ids = Object.keys(state.cart);
   const accent = 'var(--color-accent)';
@@ -1551,7 +2077,8 @@ function renderTabs(){
   return tab('menu', ICON.menu, 'Menu')
        + tab('order', ICON.order, 'Order', badge)
        + tab('list', ICON.list, 'List')
-       + tab('add', ICON.add, 'Add');
+       + tab('add', ICON.add, 'Add')
+       + tab('travel', ICON.travel, 'Trip');
 }
 
 /* ── Dish detail sheet ──────────────────────────────────────────────────── */
@@ -1644,7 +2171,7 @@ const $tabbar   = document.getElementById('tabbar');
 const $overlays = document.getElementById('overlays');
 const $status   = document.getElementById('statusbar');
 
-const SCREENS = { menu:renderMenu, order:renderOrder, list:renderList, add:renderAdd };
+const SCREENS = { menu:renderMenu, order:renderOrder, list:renderList, add:renderAdd, travel:renderTravel };
 let lastScreen = null;
 
 function render(){
@@ -1843,6 +2370,28 @@ const ACTIONS = {
     showToast('Code copied');
   },
   joinPair(){ joinHousehold(state.pairCode); },
+
+  // ── Trip planner ──────────────────────────────────────────────────────
+  travelTab(el){ state.travelTab = el.dataset.tab; },
+  travelChip(el){ state.travelQuery = el.dataset.q; travelSearch(); },
+  travelSearch(){ travelSearch(); },
+  travelAdd(el){
+    const r = state.travelResults[Number(el.dataset.i)];
+    if(r) travelAddPick(r);
+  },
+  travelRemove(el){ travelRemovePick(el.dataset.id); },
+  travelOptimize(){ travelOptimize(); },
+  travelOpenMaps(){ travelOpenMaps(); return false; },
+  travelSetDay(el){ travelSetDay(Number(el.dataset.day)); },
+  travelAddDay(){ travelAddDay(); },
+  travelMoveDay(el){ travelMoveDay(el.dataset.id); },
+  travelStaySearch(){ travelStaySearch(); },
+  travelRecommendStay(){ travelRecommendStay(); },
+  travelSetStay(el){
+    const r = state.travelStayResults[Number(el.dataset.i)];
+    if(r) travelSetHotel(r);
+  },
+  travelClearHotel(){ travelClearHotel(); },
 };
 
 app.addEventListener('click', ev => {
@@ -1882,7 +2431,19 @@ app.addEventListener('input', ev => {
     state.form[el.dataset.inp] = el.value;
   }else if(el.dataset.inp === 'ing'){
     state.form.ingredients[Number(el.dataset.i)][el.dataset.f] = el.value;
+  }else if(el.dataset.inp === 'travelQuery'){
+    state.travelQuery = el.value;
+  }else if(el.dataset.inp === 'travelStayQuery'){
+    state.travelStayQuery = el.value;
   }
+});
+
+// Enter in a trip search box fires that search.
+app.addEventListener('keydown', ev => {
+  const inp = ev.target.dataset && ev.target.dataset.inp;
+  if(ev.key !== 'Enter') return;
+  if(inp === 'travelQuery'){ ev.preventDefault(); travelSearch(); }
+  else if(inp === 'travelStayQuery'){ ev.preventDefault(); travelStaySearch(); }
 });
 
 function saveRecipe(){
@@ -2015,6 +2576,10 @@ backuppick.addEventListener('change', () => {
 });
 
 load();
+loadTravel();
+// An untouched (empty) trip should adopt whatever the shared household already
+// has — never push its blank over the other phone's plan on first launch.
+if(!state.travelPicks.length && !state.travelHotel) lastSynced.trip = serialize('trip', tripBundle());
 reconcileCategories();
 render();
 

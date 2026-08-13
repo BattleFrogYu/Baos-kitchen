@@ -11,7 +11,9 @@
 --
 --    categories : your editable dish categories
 --    staples    : ingredients you always have, kept off the shopping list
+--    trip       : the Tokyo trip plan — picked spots, days, hotel, routes
 -- ═══════════════════════════════════════════════════════════════════════
 
 alter table kitchens add column if not exists categories jsonb;
 alter table kitchens add column if not exists staples    jsonb;
+alter table kitchens add column if not exists trip       jsonb;
